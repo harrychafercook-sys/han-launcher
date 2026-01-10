@@ -6,7 +6,7 @@
         "queryPort": "27017",
         "startDate": "01/01/2026",
         "endDate": "22/01/2026"
-    }
+    },
     {
         "tag": "OFFICIAL PLAYTEST",
         "ip": "51.38.89.140",
