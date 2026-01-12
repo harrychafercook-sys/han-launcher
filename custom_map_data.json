@@ -28,5 +28,10 @@
   {
     "key": "onforin",
     "url": "https://dayz.xam.nu/onforin"
+  } ,
+  {
+    "key": "sakhalin",
+    "name": "sakhal",
+    "url": "https://www.izurvive.com/sakhal/"
   } 
 ]
