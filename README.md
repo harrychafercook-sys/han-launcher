@@ -1,0 +1,56 @@
+# HAN LAUNCHER
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/NrygDesgUM)
+[![Ko-Fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/harrychafercook)
+
+A fast and reliable DayZ server launcher built with **Go**. HAN LAUNCHER leverages a custom **NodeJS sidecar** for deep Steamworks integration, providing a responsive interface with advanced features for server finding and mod management.
+
+<div align="center">
+  <img src="docs/main.jpg" alt="Launcher Main Interface" width="800">
+</div>
+
+## 🌟 Features
+
+### 🔍 Server Analysis Tools
+-   **Fake Pop Checker**: Check if a server is inflating its player count.
+-   **Ping Spoof Detection**: Scan servers to find out if they are faking their ping.
+-   **Map Links**: One-click access to the server's map (iZurvive) directly from the browser.
+
+### 🟣 Community Features
+-   **Twitch Integration**: The launcher logo **glows purple** when **MistaHanMan** is live on Twitch. Click to watch the stream.
+-   **Playtest Tracking**: See upcoming map playtests and closed betas easily.
+
+### 🛠️ Mod Management
+-   **Steam Integration**: Fully integrated with Steam Workshop.
+-   **Auto-Verification**: Automatically detects missing or outdated mods and downloads them for you.
+-   **Invalid Mod Detection**: Identifies mods that have been removed from the workshop so you don't get stuck joining.
+
+### ⚡ Performance Options
+-   **Custom Launch Parameters**: Add parameters like `-cpuCount=8` and `-exThreads=16` to boost performance.
+-   **Better Search**: Improved search to help you find servers with names like `hashima.gg` instantly.
+
+## 🚀 Getting Started
+
+1.  Download the latest executable (`.exe`) from the [Releases](https://github.com/harrychafercook-sys/han-launcher/releases) page.
+2.  Run the application.
+    > **Note**: Since this app is not signed with a Microsoft Certificate, you may see a "Windows protected your PC" popup. Click **More info** -> **Run anyway** to launch.
+3.  Set your Survivor Name in the **Identity** settings.
+4.  (Optional) Configure your **Launch Parameters** for optimal performance.
+5.  Select a server and deploy!
+
+## 📸 Gallery
+
+<div align="center">
+  <img src="docs/favourites.jpg" alt="Favorites" width="45%">
+  <img src="docs/server.jpg" alt="Server Browser" width="45%">
+  <br><br>
+  <img src="docs/ping.jpg" alt="Ping Scanner" width="45%">
+  <img src="docs/pop.jpg" alt="Population Analyzer" width="45%">
+</div>
+
+## 🤝 Support & Community
+
+Join the operation on Discord or support the development on Ko-fi.
+
+-   [**Discord Community**](https://discord.com/invite/NrygDesgUM)
+-   [**Support on Ko-fi**](https://ko-fi.com/harrychafercook)
