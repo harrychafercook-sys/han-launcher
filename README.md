@@ -3,7 +3,7 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/NrygDesgUM)
 [![Ko-Fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/harrychafercook)
 
-A fast and reliable DayZ server launcher built with **Go**. HAN LAUNCHER leverages a custom **NodeJS sidecar** for deep Steamworks integration, providing a responsive interface with advanced features for server finding and mod management.
+A fast and reliable DayZ server launcher built with **Go** and **Wails**. HAN LAUNCHER leverages **native Steamworks bindings** for deep integration, providing a responsive interface with advanced features for server finding and mod management.
 
 <div align="center">
   <img src="docs/main.jpg" alt="Launcher Main Interface" width="800">
