@@ -54,3 +54,18 @@ Join the operation on Discord or support the development on Ko-fi.
 
 -   [**Discord Community**](https://discord.com/invite/NrygDesgUM)
 -   [**Support on Ko-fi**](https://ko-fi.com/harrychafercook)
+
+## 📦 Credits & Dependencies
+
+This project stands on the shoulders of giants. Special thanks to the following open-source projects and services:
+
+### Core Frameworks
+-   [**Wails**](https://github.com/wailsapp/wails): The powerful Go framework that makes this lightweight frontend possible.
+-   [**PureGo**](https://github.com/ebitengine/purego): Used for low-level library integration (Native Steamworks).
+
+### Libraries
+-   [**a2s & a3sb**](https://github.com/woozymasta/a2s): Critical for the ultra-fast native server verification and ping/player checks.
+
+### Services & Tools
+-   [**BattleMetrics API**](https://www.battlemetrics.com/developers/documentation): Provides the extensive server data, search capabilities, and playtest tracking.
+-   [**Inno Setup**](https://jrsoftware.org/isinfo.php): The reliable installer technology used to package the launcher.
