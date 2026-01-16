@@ -4,6 +4,7 @@ import (
 	"context"
 	"dayz-launcher-go/internal/a2s"
 	"dayz-launcher-go/internal/dayz"
+	"dayz-launcher-go/internal/discord"
 	"syscall"
 
 	"dayz-launcher-go/internal/steamworks"
@@ -52,6 +53,14 @@ func (a *App) startup(ctx context.Context) {
 		// Initialize Native Steamworks
 		// Ticker loop for callbacks
 		go func() {
+			// Initialize Discord RPC
+			if err := discord.Init("1461722298506809395"); err != nil {
+				fmt.Println("[App] Discord Init Failed:", err)
+			} else {
+				// Set initial status
+				discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
+			}
+
 			if err := steamworks.Init(); err != nil {
 				fmt.Println("[App] Native Steamworks Init Failed:", err)
 			}
@@ -66,6 +75,7 @@ func (a *App) startup(ctx context.Context) {
 			for {
 				select {
 				case <-ctx.Done():
+					discord.Close()
 					return
 				case <-ticker.C:
 					if !steamworks.IsInitialized() {
@@ -596,8 +606,29 @@ func (a *App) CheckTwitchStream(channel string) (interface{}, error) {
 // -- SYSTEM METHODS --
 
 // LaunchGame
-func (a *App) LaunchGame(ip string, port int, mods []string, name string, launchParams string) (interface{}, error) {
-	fmt.Printf("[App] LaunchGame Called: IP=%s Port=%d Mods=%d Name=%s Params=%s\n", ip, port, len(mods), name, launchParams)
+func (a *App) LaunchGame(ip string, port int, mods []string, name string, launchParams string, discordEnabled bool, serverName string) (interface{}, error) {
+	fmt.Printf("[App] LaunchGame Called: IP=%s Port=%d Mods=%d Name=%s Params=%s DLC=%t ServerName=%s\n", ip, port, len(mods), name, launchParams, discordEnabled, serverName)
+
+	// Update Discord Status
+	go func() {
+		if discordEnabled {
+			// Use provided serverName if available, else fallback
+			finalServerName := serverName
+			if finalServerName == "" {
+				finalServerName = fmt.Sprintf("%s:%d", ip, port)
+				// Try to fetch real name
+				if info, err := a.FetchServerInfo(ip, port); err == nil {
+					if n, ok := info["name"].(string); ok {
+						finalServerName = n
+					}
+				}
+			}
+			discord.UpdatePresence("Playing DayZ", "Server: "+finalServerName, "logo", "DayZ")
+		} else {
+			// Generic Status if hidden
+			discord.UpdatePresence("Playing DayZ", "In Game", "logo", "DayZ")
+		}
+	}()
 
 	// Default to Steam Name if custom name is empty
 	if name == "" {
@@ -723,6 +754,17 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 			fmt.Printf("[App] Failed to launch EXE: %v\n", err)
 			return nil, err
 		}
+
+		// Monitor Game Process
+		go func() {
+			if err := cmd.Wait(); err != nil {
+				fmt.Printf("[App] Game process exited with error: %v\n", err)
+			} else {
+				fmt.Println("[App] Game process exited normally.")
+			}
+			// Reset Discord Presence
+			discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
+		}()
 
 	} else {
 		// FALLBACK TO STEAM PROTOCOL (Old Method)
