@@ -69,8 +69,12 @@ func (a *App) startup(ctx context.Context) {
 			ticker := time.NewTicker(500 * time.Millisecond)
 			// Ticker for download updates (Reduced from 1s to 2s)
 			dlTicker := time.NewTicker(2 * time.Second)
+			// Ticker for Discord reconnection (5 seconds)
+			discordTicker := time.NewTicker(5 * time.Second)
+
 			defer ticker.Stop()
 			defer dlTicker.Stop()
+			defer discordTicker.Stop()
 
 			for {
 				select {
@@ -98,6 +102,29 @@ func (a *App) startup(ctx context.Context) {
 								// Emit 'download-update' event to frontend
 								runtime.EventsEmit(ctx, "download-update", data)
 							}
+						}
+					}
+				case <-discordTicker.C:
+					// Check if Discord process is running (Force disconnect if not)
+					discordRunning := a.isDiscordProcessRunning()
+					if !discordRunning && discord.IsConnected() {
+						discord.DisconnectForced()
+					}
+
+					// Check Discord Status and Reconnect if needed
+					if !discord.IsConnected() {
+						// Only attempt reconnect if process is running
+						if discordRunning {
+							// Quietly attempt reconnect
+							if err := discord.Init("1461722298506809395"); err == nil {
+								fmt.Println("[App] Discord Reconnected via Loop")
+								discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
+							}
+						}
+					} else {
+						// Heartbeat: Try to refresh to detect silent disconnection
+						if err := discord.Refresh(); err != nil {
+							// Quietly fail, next tick will handle reconnect
 						}
 					}
 				}
@@ -786,6 +813,14 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 	}
 
 	return map[string]interface{}{"success": true}, nil
+}
+
+func (a *App) isDiscordProcessRunning() bool {
+	// Optimization: Check for Discord IPC pipe instead of running tasklist (heavy).
+	// Discord creates \\.\pipe\discord-ipc-0 (or -1, -2.. but usually 0 for first instance).
+	// This is significantly lighter on CPU than spawning a process.
+	_, err := os.Stat(`\\.\pipe\discord-ipc-0`)
+	return err == nil
 }
 
 func (a *App) VerifyServerMods(ip string, port int) (interface{}, error) {
