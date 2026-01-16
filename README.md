@@ -65,6 +65,7 @@ This project stands on the shoulders of giants. Special thanks to the following 
 
 ### Libraries
 -   [**a2s & a3sb**](https://github.com/woozymasta/a2s): Critical for the ultra-fast native server verification and ping/player checks.
+-   [**Rich Go**](https://github.com/hugolgst/rich-go): Powers the real-time Discord status updates.
 
 ### Services & Tools
 -   [**BattleMetrics API**](https://www.battlemetrics.com/developers/documentation): Provides the extensive server data, search capabilities, and playtest tracking.
