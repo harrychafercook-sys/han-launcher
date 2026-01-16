@@ -13,6 +13,11 @@ var (
 	isConnected        bool
 )
 
+// IsConnected returns the current connection status
+func IsConnected() bool {
+	return isConnected
+}
+
 // Init connects to Discord RPC
 func Init(clientId string) error {
 	ConfiguredClientId = clientId
