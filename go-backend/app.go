@@ -68,14 +68,26 @@ func (a *App) startup(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					steamworks.RunCallbacks()
+					if !steamworks.IsInitialized() {
+						// Attempt to initialize if not already connected
+						if err := steamworks.Init(); err != nil {
+							// Still failed, just ignore until next tick
+						} else {
+							fmt.Println("[App] Native Steamworks Initialized via Loop")
+						}
+					} else {
+						// Only run callbacks if initialized
+						steamworks.RunCallbacks()
+					}
 				case <-dlTicker.C:
 					// Poll downloads and emit event if active
-					data := a.GetActiveDownloads() // Reusing the method which formats correctly
-					if mapData, ok := data.(map[string]interface{}); ok {
-						if list, ok := mapData["data"].([]map[string]interface{}); ok && len(list) > 0 {
-							// Emit 'download-update' event to frontend
-							runtime.EventsEmit(ctx, "download-update", data)
+					if steamworks.IsInitialized() {
+						data := a.GetActiveDownloads() // Reusing the method which formats correctly
+						if mapData, ok := data.(map[string]interface{}); ok {
+							if list, ok := mapData["data"].([]map[string]interface{}); ok && len(list) > 0 {
+								// Emit 'download-update' event to frontend
+								runtime.EventsEmit(ctx, "download-update", data)
+							}
 						}
 					}
 				}
@@ -174,10 +186,29 @@ func (a *App) FetchServerPlayers(ip string, port int) (map[string]interface{}, e
 // -- STEAM METHODS --
 
 func (a *App) LoginSteam() (interface{}, error) {
+	// 1. Try Init if not initialized
+	if !steamworks.IsInitialized() {
+		fmt.Println("[App] LoginSteam: Steam not initialized, attempting init...")
+		if err := steamworks.Init(); err != nil {
+			fmt.Printf("[App] LoginSteam: Init failed: %v\n", err)
+			return map[string]interface{}{"success": false, "error": "Could not connect to Steam"}, nil
+		}
+		// If success, we should likely wait a tiny bit or just proceed
+		fmt.Println("[App] LoginSteam: Init successful!")
+	}
+
+	// 2. Fetch Name
 	name := steamworks.GetPersonaName()
 	if name == "" {
 		return map[string]interface{}{"success": false}, nil
 	}
+
+	// 3. Update Cache
+	a.lastPersonaName = name
+
+	// Emit Event so Frontend updates immediately (if called from other modals)
+	runtime.EventsEmit(a.ctx, "steam-connected", map[string]interface{}{"connected": true, "name": name})
+
 	return map[string]interface{}{"success": true, "name": name}, nil
 }
 
@@ -185,7 +216,7 @@ func (a *App) GetSteamStatus() interface{} {
 	// Check if Steamworks is initialized
 	isInit := steamworks.IsInitialized()
 	if !isInit {
-		return nil
+		return map[string]interface{}{"success": false, "connected": false, "error": "Steam not running"}
 	}
 
 	name := steamworks.GetPersonaName()
@@ -227,7 +258,7 @@ func (a *App) UnsubscribeWorkshop(modId string) (interface{}, error) {
 
 func (a *App) UnsubscribeAll() (interface{}, error) {
 	if UseNativeSteamworks {
-		fmt.Println("[App] Nuke Mode: Unsubscribing all mods...")
+		fmt.Println("[App] Unsubscribing all mods (ACTIVE DOWNLOADS WILL BE STOPPED)...")
 
 		// 1. API Unsubscribe (Steamworks)
 		items := steamworks.GetSubscribedItems()
@@ -242,63 +273,107 @@ func (a *App) UnsubscribeAll() (interface{}, error) {
 			}
 		}
 
-		// 2. Filesystem Cleanup (Delete any leftover folders)
-		fmt.Println("[App] Scanning filesystem for leftovers...")
-
-		workshopPath := getWorkshopPath()
-		if workshopPath != "" {
-			fmt.Printf("[App] Found workshop dir: %s\n", workshopPath)
-
-			// A. Delete Content Folder (221100)
-			entries, err := os.ReadDir(workshopPath)
-			if err == nil {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						// Check if numeric (Mod ID)
-						if regexp.MustCompile(`^\d+$`).MatchString(entry.Name()) {
-							fullPath := filepath.Join(workshopPath, entry.Name())
-							err := os.RemoveAll(fullPath)
-							if err != nil {
-								fmt.Printf("[App] Failed to delete %s: %v\n", fullPath, err)
-								errors++
-							}
-						}
-					}
-				}
-			}
-
-			// B. Delete Download Cache (steamapps/downloading)
-			// workshopPath is .../steamapps/workshop/content/221100
-			// We want .../steamapps/downloading
-			steamAppsDir := filepath.Dir(filepath.Dir(filepath.Dir(workshopPath))) // Up 3 levels
-			downloadingDir := filepath.Join(steamAppsDir, "downloading")
-
-			if _, err := os.Stat(downloadingDir); err == nil {
-				fmt.Printf("[App] Clearing Download Cache: %s\n", downloadingDir)
-				entries, err := os.ReadDir(downloadingDir)
-				if err == nil {
-					for _, entry := range entries {
-						fullPath := filepath.Join(downloadingDir, entry.Name())
-						// Nuke everything in downloading
-						err := os.RemoveAll(fullPath)
-						if err != nil {
-							fmt.Printf("[App] Failed to delete cache item %s: %v\n", fullPath, err)
-						} else {
-							fmt.Printf("[App] Deleted cache item: %s\n", entry.Name())
-						}
-					}
-				}
-			} else {
-				fmt.Printf("[App] Download cache dir not found: %s\n", downloadingDir)
-			}
-
-		} else {
-			fmt.Println("[App] Warning: Could not determine workshop directory. checks failed.")
-		}
-
-		return map[string]interface{}{"success": true, "count": count, "errors": errors, "method": "native-nuke"}, nil
+		return map[string]interface{}{"success": true, "count": count, "errors": errors, "method": "steam-unsub"}, nil
 	}
 	return map[string]interface{}{"success": false, "error": "Native Steamworks disabled"}, nil
+}
+
+func (a *App) DeleteAllModFiles() (interface{}, error) {
+	fmt.Println("[App] Nuke Mode: Deleting all mod files from filesystem...")
+	workshopPath := getWorkshopPath()
+	count := 0
+	errors := 0
+
+	if workshopPath != "" {
+		fmt.Printf("[App] Found workshop dir: %s\n", workshopPath)
+
+		// A. Delete Content Folder (221100)
+		entries, err := os.ReadDir(workshopPath)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					// Check if numeric (Mod ID)
+					if regexp.MustCompile(`^\d+$`).MatchString(entry.Name()) {
+						fullPath := filepath.Join(workshopPath, entry.Name())
+						err := os.RemoveAll(fullPath)
+						if err != nil {
+							fmt.Printf("[App] Failed to delete %s: %v\n", fullPath, err)
+							errors++
+						} else {
+							count++
+						}
+					}
+				}
+			}
+		}
+
+		// B. Delete Download Cache (steamapps/downloading)
+		// workshopPath is .../steamapps/workshop/content/221100
+		// We want .../steamapps/downloading
+		steamAppsDir := filepath.Dir(filepath.Dir(filepath.Dir(workshopPath))) // Up 3 levels
+		downloadingDir := filepath.Join(steamAppsDir, "downloading")
+
+		if _, err := os.Stat(downloadingDir); err == nil {
+			fmt.Printf("[App] Clearing Download Cache: %s\n", downloadingDir)
+			entries, err := os.ReadDir(downloadingDir)
+			if err == nil {
+				for _, entry := range entries {
+					fullPath := filepath.Join(downloadingDir, entry.Name())
+					// Nuke everything in downloading
+					err := os.RemoveAll(fullPath)
+					if err != nil {
+						fmt.Printf("[App] Failed to delete cache item %s: %v\n", fullPath, err)
+					} else {
+						fmt.Printf("[App] Deleted cache item: %s\n", entry.Name())
+					}
+				}
+			}
+		} else {
+			fmt.Printf("[App] Download cache dir not found: %s\n", downloadingDir)
+		}
+
+		// C. Delete Workshop Temporary Downloads (steamapps/workshop/downloads/221100)
+		// workshopPath is .../steamapps/workshop/content/221100
+		workshopRootDir := filepath.Dir(filepath.Dir(workshopPath)) // .../steamapps/workshop
+		workshopDownloadsDir := filepath.Join(workshopRootDir, "downloads", "221100")
+
+		if _, err := os.Stat(workshopDownloadsDir); err == nil {
+			fmt.Printf("[App] Clearing Workshop Temp Downloads: %s\n", workshopDownloadsDir)
+			err := os.RemoveAll(workshopDownloadsDir)
+			if err != nil {
+				fmt.Printf("[App] Failed to delete workshop downloads dir %s: %v\n", workshopDownloadsDir, err)
+				errors++
+			} else {
+				fmt.Printf("[App] Deleted workshop downloads dir: %s\n", workshopDownloadsDir)
+				count++
+			}
+		} else {
+			fmt.Printf("[App] Workshop downloads dir not found: %s\n", workshopDownloadsDir)
+		}
+
+		// D. Delete Workshop Temp (steamapps/workshop/temp/221100)
+		workshopTempDir := filepath.Join(workshopRootDir, "temp", "221100")
+
+		if _, err := os.Stat(workshopTempDir); err == nil {
+			fmt.Printf("[App] Clearing Workshop Temp: %s\n", workshopTempDir)
+			err := os.RemoveAll(workshopTempDir)
+			if err != nil {
+				fmt.Printf("[App] Failed to delete workshop temp dir %s: %v\n", workshopTempDir, err)
+				errors++
+			} else {
+				fmt.Printf("[App] Deleted workshop temp dir: %s\n", workshopTempDir)
+				count++
+			}
+		} else {
+			fmt.Printf("[App] Workshop temp dir not found: %s\n", workshopTempDir)
+		}
+
+	} else {
+		fmt.Println("[App] Warning: Could not determine workshop directory. fileschecks failed.")
+		return map[string]interface{}{"success": false, "error": "Could not determine workshop directory"}, nil
+	}
+
+	return map[string]interface{}{"success": true, "count": count, "errors": errors, "method": "fs-delete"}, nil
 }
 
 // getWorkshopPath tries to find the DayZ workshop content directory
