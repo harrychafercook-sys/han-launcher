@@ -152,6 +152,20 @@ func (a *App) BattleMetricsFetch(url string) BMResponse {
 	}
 	defer resp.Body.Close()
 
+	// Parse Rate Limits Headers early
+	rateLimit := map[string]string{
+		"remaining": resp.Header.Get("X-Rate-Limit-Remaining"),
+		"limit":     resp.Header.Get("X-Rate-Limit-Limit"),
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return BMResponse{
+			Success:   false,
+			Error:     fmt.Sprintf("HTTP Error %d", resp.StatusCode),
+			RateLimit: rateLimit,
+		}
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return BMResponse{Success: false, Error: err.Error()}
@@ -160,11 +174,6 @@ func (a *App) BattleMetricsFetch(url string) BMResponse {
 	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return BMResponse{Success: false, Error: "JSON Parse Error: " + err.Error()}
-	}
-
-	rateLimit := map[string]string{
-		"remaining": resp.Header.Get("X-Rate-Limit-Remaining"),
-		"limit":     resp.Header.Get("X-Rate-Limit-Limit"),
 	}
 
 	return BMResponse{
@@ -411,6 +420,11 @@ func (a *App) DeleteAllModFiles() (interface{}, error) {
 	}
 
 	return map[string]interface{}{"success": true, "count": count, "errors": errors, "method": "fs-delete"}, nil
+}
+
+// GetFriendsList returns the current friends list from Steam
+func (a *App) GetFriendsList() []steamworks.SteamFriend {
+	return steamworks.GetFriends()
 }
 
 // getWorkshopPath tries to find the DayZ workshop content directory
