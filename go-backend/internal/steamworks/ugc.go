@@ -22,6 +22,7 @@ var (
 	f_GetSubscribedItems    func(uintptr, *uint64, uint32) uint32
 
 	f_AppInstallDir func(uintptr, uint32, *byte, uint32) uint32
+	f_GetAppOwner   func(uintptr) uint64
 )
 
 // InitManualBindings loads UGC/Apps symbols using the existing lib handle
@@ -77,6 +78,7 @@ func InitManualBindings(lib uintptr) {
 	bindSafe(&f_GetSubscribedItems, lib, "SteamAPI_ISteamUGC_GetSubscribedItems")
 
 	bindSafe(&f_AppInstallDir, lib, "SteamAPI_ISteamApps_GetAppInstallDir")
+	bindSafe(&f_GetAppOwner, lib, "SteamAPI_ISteamApps_GetAppOwner")
 
 	if ptrSteamUGC != 0 {
 		// UGC interface found
