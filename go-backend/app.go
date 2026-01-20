@@ -422,9 +422,31 @@ func (a *App) DeleteAllModFiles() (interface{}, error) {
 	return map[string]interface{}{"success": true, "count": count, "errors": errors, "method": "fs-delete"}, nil
 }
 
-// GetFriendsList returns the current friends list from Steam
 func (a *App) GetFriendsList() []steamworks.SteamFriend {
 	return steamworks.GetFriends()
+}
+
+func (a *App) OpenChat(steamIdString string) (interface{}, error) {
+	// Frontend sends string because JS Numbers lose precision for uint64
+	// Convert to uint64
+	var steamID uint64
+	n, _ := fmt.Sscanf(steamIdString, "%d", &steamID)
+
+	fmt.Printf("[App] OpenChat Requested for: %s (Parsed: %d)\n", steamIdString, steamID)
+
+	if n > 0 && steamID != 0 {
+		steamworks.OpenChat(steamID)
+
+		// Fallback: Also try opening via Protocol Handler just in case Overlay isn't hooked
+		// This ensures it opens a window even if the overlay toggle fails
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			exec.Command("explorer", fmt.Sprintf("steam://friends/message/%d", steamID)).Start()
+		}()
+
+		return map[string]interface{}{"success": true}, nil
+	}
+	return map[string]interface{}{"success": false, "error": "Invalid SteamID"}, nil
 }
 
 // getWorkshopPath tries to find the DayZ workshop content directory
@@ -566,6 +588,7 @@ func (a *App) FetchModDetails(modIds []string) (interface{}, error) {
 		Title           string      `json:"title"`
 		FileSize        interface{} `json:"file_size"` // Can be string or int? usually int in JSON but string in form? API varies. sidecar says simple JSON parse.
 		TimeUpdated     interface{} `json:"time_updated"`
+		PreviewUrl      string      `json:"preview_url"`
 	}
 	type ResponseContainer struct {
 		Response struct {
@@ -863,7 +886,7 @@ func ensureMapCacheDir() string {
 	if err != nil {
 		return ""
 	}
-	cacheDir := filepath.Join(configDir, "dayz-launcher-go", "maps")
+	cacheDir := filepath.Join(configDir, "han-launcher", "map_cache")
 	os.MkdirAll(cacheDir, 0755)
 	return cacheDir
 }
