@@ -46,5 +46,11 @@
         "name": "sakhal",
         "url": "https://www.izurvive.com/sakhal/",
         "modName": ""
+    },
+        {
+        "key": "namalsk",
+        "name": "namalsk",
+        "url": "https://www.izurvive.com/namalsk/",
+        "modName": "namalsk survival"
     }
 ]
