@@ -1,56 +1,212 @@
 [
     {
-        "key": "pnw",
-        "name": "PNW",
-        "url": "https://www.izurvive.com/pnw/",
-        "modName": "PNW 2.0"
-    },
-    {
-        "key": "pacificnorthwest",
-        "name": "PNW",
-        "url": "https://www.izurvive.com/pnw/",
-        "modName": "PNW 2.0"
-    },
-    {
-        "key": "hashima",
-        "name": "Hashima",
-        "url": "https://dayz.xam.nu/hashima",
-        "modName": "Hashima Islands"
-    },
-    {
-        "key": "raman",
-        "name": "Raman",
-        "url": "https://dayz.xam.nu/raman",
-        "modName": ""
-    },
-    {
-        "key": "avalon",
-        "name": "Avalon",
-        "url": "https://dayz.xam.nu/avalon",
-        "modName": ""
+        "key": "anastara",
+        "name": "Anastara",
+        "url": "https://www.izurvive.com/anastara/",
+        "modName": "Anastara",
+        "discord": "https://discord.gg/G7frjeXN3g"
     },
     {
         "key": "antoria",
         "name": "Antoria",
         "url": "https://dayz.xam.nu/antoria",
-        "modName": ""
+        "modName": "",
+        "discord": "https://discord.gg/JgVHUnjCKs"
+    },
+    {
+        "key": "alteria",
+        "name": "Alteria",
+        "url": "https://www.izurvive.com/alteria/",
+        "modName": "",
+        "discord": "https://discord.gg/jtA7a8Cq3N"
+    },
+    {
+        "key": "azalea",
+        "name": "Azalea",
+        "url": "https://www.izurvive.com/azalea/",
+        "modName": "",
+        "discord": "https://discord.gg/mBjhtHQwyn"
+    },
+    {
+        "key": "banov",
+        "name": "Banov",
+        "url": "https://www.izurvive.com/banov/",
+        "modName": "",
+        "discord": "https://discord.gg/8JqNYY9jB6"
+    },
+    {
+        "key": "barrington",
+        "name": "Barrington",
+        "url": "https://www.izurvive.com/barrington/",
+        "modName": "",
+        "discord": "https://discord.gg/4KEfk7hKHd"
+    },
+    {
+        "key": "bitterroot",
+        "name": "Bitterroot",
+        "url": "https://www.izurvive.com/bitterroot/",
+        "modName": "",
+        "discord": "https://discord.gg/e7PtECKaG4"
+    },
+    {
+        "key": "chiemsee",
+        "name": "Chiemsee",
+        "url": "https://www.izurvive.com/chiemsee/",
+        "modName": "",
+        "discord": "https://discord.gg/jYDzV8E5Et"
+    },
+    {
+        "key": "deadfall",
+        "name": "Deadfall",
+        "url": "https://www.izurvive.com/deadfall/",
+        "modName": "",
+        "discord": "https://discord.gg/VgCaDaZW8g"
+    },
+    {
+        "key": "deerisle",
+        "name": "Deerisle",
+        "url": "https://www.izurvive.com/deerisle/",
+        "modName": "",
+        "discord": "https://discord.gg/jtA7a8Cq3N"
+    },
+    {
+        "key": "elderwoodz",
+        "name": "ElderWoodz",
+        "url": "https://www.izurvive.com/elderwoodz/",
+        "modName": "",
+        "discord": ""
+    },
+    {
+        "key": "esseker",
+        "name": "Esseker",
+        "url": "https://www.izurvive.com/esseker/",
+        "modName": "",
+        "discord": "https://discord.gg/CjnsyUh5zc"
+    },
+    {
+        "key": "greencounty",
+        "name": "GreenCounty",
+        "url": "https://www.izurvive.com/greencounty/",
+        "modName": "",
+        "discord": "https://discord.gg/BPFNJcXQaK"
+    },
+    {
+        "key": "hashima",
+        "name": "Hashima",
+        "url": "https://dayz.xam.nu/hashima",
+        "modName": "Hashima Islands",
+        "discord": "https://discord.gg/sEVN5WjUrT"
+    },
+    {
+        "key": "lux",
+        "name": "Lux",
+        "url": "https://www.izurvive.com/lux/",
+        "modName": "",
+        "discord": ""
+    },
+    {
+        "key": "melkart",
+        "name": "Melkart",
+        "url": "https://www.izurvive.com/melkart/",
+        "modName": "",
+        "discord": "https://discord.gg/zJ3VQVmV55"
+    },
+    {
+        "key": "namalsk",
+        "name": "namalsk",
+        "url": "https://www.izurvive.com/namalsk/",
+        "modName": "namalsk survival",
+        "discord": "https://discord.gg/f9XwcXMK8N"
+    },
+    {
+        "key": "newyork",
+        "name": "NewYork",
+        "url": "https://www.izurvive.com/newyork/",
+        "modName": "",
+        "discord": "https://discord.gg/ATuugBxv4b"
+    },
+    {
+        "key": "pnw",
+        "name": "PNW",
+        "url": "https://www.izurvive.com/pnw/",
+        "modName": "PNW 2.0",
+        "discord": "https://discord.gg/k4C4c8MN4b"
+    },
+    {
+        "key": "pacificnorthwest",
+        "name": "PNW",
+        "url": "https://www.izurvive.com/pnw/",
+        "modName": "PNW 2.0",
+        "discord": "https://discord.gg/k4C4c8MN4b"
+    },
+    {
+        "key": "pripyat",
+        "name": "Pripyat",
+        "url": "https://www.izurvive.com/pripyat/",
+        "modName": "",
+        "discord": "https://discord.gg/HjPAsTjkae"
+    },
+    {
+        "key": "raman",
+        "name": "Raman",
+        "url": "https://dayz.xam.nu/raman",
+        "modName": "",
+        "discord": "https://discord.gg/XxjySzQ7WM"
+    },
+    {
+        "key": "scalasaig",
+        "name": "Scalasaig",
+        "url": "https://www.izurvive.com/scalasaig/",
+        "modName": "",
+        "discord": "https://discord.gg/RrS82t48Bz"
+    },
+    {
+        "key": "scillyisland",
+        "name": "ScillyIsland",
+        "url": "https://www.izurvive.com/scillyisland/",
+        "modName": "",
+        "discord": "https://discord.gg/gy8YDQ3MS7"
+    },
+    {
+        "key": "siberia",
+        "name": "Siberia",
+        "url": "https://www.izurvive.com/siberia/",
+        "modName": "",
+        "discord": "https://discord.gg/ATuugBxv4b"
+    },
+    {
+        "key": "takistan",
+        "name": "Takistan",
+        "url": "https://www.izurvive.com/takistan/",
+        "modName": "",
+        "discord": ""
+    },
+    {
+        "key": "valning",
+        "name": "Valning",
+        "url": "https://www.izurvive.com/valning/",
+        "modName": "",
+        "discord": ""
+    },
+    {
+        "key": "avalon",
+        "name": "Avalon",
+        "url": "https://dayz.xam.nu/avalon",
+        "modName": "",
+        "discord": "https://discord.gg/7KQrmqQKHy"
     },
     {
         "key": "onforin",
         "name": "Onforin",
         "url": "https://dayz.xam.nu/onforin",
-        "modName": ""
+        "modName": "",
+        "discord": ""
     },
     {
         "key": "sakhalin",
         "name": "sakhal",
         "url": "https://www.izurvive.com/sakhal/",
-        "modName": ""
-    },
-        {
-        "key": "namalsk",
-        "name": "namalsk",
-        "url": "https://www.izurvive.com/namalsk/",
-        "modName": "namalsk survival"
+        "modName": "",
+        "discord": ""
     }
 ]
