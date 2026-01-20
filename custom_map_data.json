@@ -1,37 +1,50 @@
 [
-  {
-    "key": "pnw",
-    "name": "PNW",
-    "url": "https://www.izurvive.com/pnw/"
-  },
-  {
-    "key": "pacificnorthwest",
-    "name": "PNW",
-    "url": "https://www.izurvive.com/pnw/"
-  },
-  {
-    "key": "hashima",
-    "url": "https://dayz.xam.nu/hashima"
-  },
-  {
-    "key": "raman",
-    "url": "https://dayz.xam.nu/raman"
-  },
-  {
-    "key": "avalon",
-    "url": "https://dayz.xam.nu/avalon"
-  },
-  {
-    "key": "antoria",
-    "url": "https://dayz.xam.nu/antoria"
-  },
-  {
-    "key": "onforin",
-    "url": "https://dayz.xam.nu/onforin"
-  } ,
-  {
-    "key": "sakhalin",
-    "name": "sakhal",
-    "url": "https://www.izurvive.com/sakhal/"
-  } 
+    {
+        "key": "pnw",
+        "name": "PNW",
+        "url": "https://www.izurvive.com/pnw/",
+        "modName": "Winter_PNW"
+    },
+    {
+        "key": "pacificnorthwest",
+        "name": "PNW",
+        "url": "https://www.izurvive.com/pnw/",
+        "modName": "Winter_PNW"
+    },
+    {
+        "key": "hashima",
+        "name": "Hashima",
+        "url": "https://dayz.xam.nu/hashima",
+        "modName": "Hashima Islands"
+    },
+    {
+        "key": "raman",
+        "name": "Raman",
+        "url": "https://dayz.xam.nu/raman",
+        "modName": ""
+    },
+    {
+        "key": "avalon",
+        "name": "Avalon",
+        "url": "https://dayz.xam.nu/avalon",
+        "modName": ""
+    },
+    {
+        "key": "antoria",
+        "name": "Antoria",
+        "url": "https://dayz.xam.nu/antoria",
+        "modName": ""
+    },
+    {
+        "key": "onforin",
+        "name": "Onforin",
+        "url": "https://dayz.xam.nu/onforin",
+        "modName": ""
+    },
+    {
+        "key": "sakhalin",
+        "name": "sakhal",
+        "url": "https://www.izurvive.com/sakhal/",
+        "modName": ""
+    }
 ]
