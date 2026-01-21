@@ -2,6 +2,10 @@
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/NrygDesgUM)
 [![Ko-Fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/harrychafercook)
+[![License](https://img.shields.io/badge/License-Open%20Source-green?style=for-the-badge)](https://github.com/harrychafercook-sys/han-launcher)
+
+> **Free & Open Source Software**: HAN Launcher is 100% free, open-source, and will **never** contain ads or paid promotions.
+> **Open Data Initiative**: Building a DayZ tool? Our playtest and server data JSONs are freely available for the community to use.
 
 A fast and reliable DayZ server launcher built with **Go** and **Wails**. HAN LAUNCHER leverages **native Steamworks bindings** for deep integration, providing a responsive interface with advanced features for server finding and mod management.
 
@@ -17,7 +21,6 @@ A fast and reliable DayZ server launcher built with **Go** and **Wails**. HAN LA
 -   **Map Links**: One-click access to the server's map (iZurvive) directly from the browser.
 
 ### 🟣 Community Features
--   **Twitch Integration**: The launcher logo **glows purple** when **MistaHanMan** is live on Twitch. Click to watch the stream.
 -   **Playtest Tracking**: See upcoming map playtests and closed betas easily.
 
 ### 🛠️ Mod Management
@@ -33,7 +36,6 @@ A fast and reliable DayZ server launcher built with **Go** and **Wails**. HAN LA
 
 1.  Download the latest executable (`.exe`) from the [Releases](https://github.com/harrychafercook-sys/han-launcher/releases) page.
 2.  Run the application.
-    > **Note**: Since this app is not signed with a Microsoft Certificate, you may see a "Windows protected your PC" popup. Click **More info** -> **Run anyway** to launch.
 3.  Set your Survivor Name in the **Identity** settings.
 4.  (Optional) Configure your **Launch Parameters** for optimal performance.
 5.  Select a server and deploy!
@@ -70,3 +72,4 @@ This project stands on the shoulders of giants. Special thanks to the following 
 ### Services & Tools
 -   [**BattleMetrics API**](https://www.battlemetrics.com/developers/documentation): Provides the extensive server data, search capabilities, and playtest tracking.
 -   [**Inno Setup**](https://jrsoftware.org/isinfo.php): The reliable installer technology used to package the launcher.
+
