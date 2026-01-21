@@ -1,20 +1,20 @@
 [
     {
         "tag": "OFFICIAL PLAYTEST",
-        "ip": "51.38.89.140",
-        "gamePort": "2302",
-        "queryPort": "27017",
-        "startDate": "01/01/2026",
-        "endDate": "22/01/2026",
-        "mapName": "DEER ISLE"
+        "ip": "216.245.177.48",
+        "gamePort": "2322",
+        "queryPort": "2323",
+        "startDate": "21/01/2026",
+        "endDate": "30/01/2026",
+        "mapName": "The Channel"
     },
     {
         "tag": "OFFICIAL PLAYTEST",
-        "ip": "51.38.89.140",
-        "gamePort": "2602",
-        "queryPort": "27019",
-        "startDate": "01/01/2026",
-        "endDate": "20/01/2026",
-        "mapName": "DEER ISLE"
+        "ip": "104.234.251.163",
+        "gamePort": "2342",
+        "queryPort": "2343",
+        "startDate": "21/01/2026",
+        "endDate": "30/01/2026",
+        "mapName": "The Channel"
     }
 ]
