@@ -208,5 +208,12 @@
         "url": "https://www.izurvive.com/sakhal/",
         "modName": "",
         "discord": ""
+    },
+    {
+        "key": "channel",
+        "name": "channel",
+        "url": "https://www.izurvive.com/channel/",
+        "modName": "Channel",
+        "discord": "https://discord.gg/pzZNprEPap"
     }
 ]
