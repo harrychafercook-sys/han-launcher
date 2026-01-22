@@ -177,7 +177,7 @@
     {
         "key": "takistan",
         "name": "Takistan",
-        "url": "https://www.izurvive.com/takistan/",
+        "url": "https://www.izurvive.com/takistanplus/",
         "modName": "",
         "discord": ""
     },
@@ -185,8 +185,8 @@
         "key": "valning",
         "name": "Valning",
         "url": "https://www.izurvive.com/valning/",
-        "modName": "",
-        "discord": ""
+        "modName": "Valning Map",
+        "discord": "https://discord.gg/7KQrmqQKHy"
     },
     {
         "key": "avalon",
