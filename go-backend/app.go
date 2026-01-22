@@ -675,6 +675,13 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 
 	// Update Discord Status
 	go func() {
+		// Prevent crash if Discord panic occurs
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[App] Recovered from Discord panic in LaunchGame: %v\n", r)
+			}
+		}()
+
 		if discordEnabled {
 			// Use provided serverName if available, else fallback
 			finalServerName := serverName
@@ -687,7 +694,11 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 					}
 				}
 			}
-			discord.UpdatePresence("Playing DayZ", "Server: "+finalServerName, "logo", "DayZ")
+			fmt.Printf("[App] Updating Discord Status: Playing on %s\n", finalServerName)
+			err := discord.UpdatePresence("Playing DayZ", "Server: "+finalServerName, "logo", "DayZ")
+			if err != nil {
+				fmt.Printf("[App] Failed to update Discord presence: %v\n", err)
+			}
 		} else {
 			// Generic Status if hidden
 			discord.UpdatePresence("Playing DayZ", "In Game", "logo", "DayZ")
