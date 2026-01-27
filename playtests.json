@@ -16,5 +16,14 @@
         "startDate": "21/01/2026",
         "endDate": "30/01/2026",
         "mapName": "The Channel"
+    },
+    {
+        "tag": "OFFICIAL PLAYTEST",
+        "ip": "103.212.227.83",
+        "gamePort": "2322",
+        "queryPort": "2323",
+        "startDate": "21/01/2026",
+        "endDate": "30/01/2026",
+        "mapName": "The Channel"
     }
 ]
