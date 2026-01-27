@@ -185,8 +185,12 @@ func (a *App) BattleMetricsFetch(url string) BMResponse {
 
 // -- UDP METHODS --
 
-func (a *App) FetchServerInfo(ip string, port int) (map[string]interface{}, error) {
-	info, err := a2s.QueryInfo(ip, port)
+func (a *App) FetchServerInfo(ip string, port int, timeoutMs int) (map[string]interface{}, error) {
+	// Default to 2s if 0 or negative
+	if timeoutMs <= 0 {
+		timeoutMs = 2000
+	}
+	info, err := a2s.QueryInfo(ip, port, time.Duration(timeoutMs)*time.Millisecond)
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}, nil
 	}
@@ -215,8 +219,12 @@ func (a *App) FetchServerRules(ip string, port int) (map[string]interface{}, err
 	}, nil
 }
 
-func (a *App) FetchServerPlayers(ip string, port int) (map[string]interface{}, error) {
-	players, err := a2s.QueryPlayers(ip, port)
+func (a *App) FetchServerPlayers(ip string, port int, timeoutMs int) (map[string]interface{}, error) {
+	// Default to 2s
+	if timeoutMs <= 0 {
+		timeoutMs = 2000
+	}
+	players, err := a2s.QueryPlayers(ip, port, time.Duration(timeoutMs)*time.Millisecond)
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}, nil
 	}
@@ -426,6 +434,15 @@ func (a *App) GetFriendsList() []steamworks.SteamFriend {
 	return steamworks.GetFriends()
 }
 
+func (a *App) GetSubscribedMods() []string {
+	ids := steamworks.GetSubscribedItems()
+	var result []string
+	for _, id := range ids {
+		result = append(result, fmt.Sprintf("%d", id))
+	}
+	return result
+}
+
 func (a *App) OpenChat(steamIdString string) (interface{}, error) {
 	// Frontend sends string because JS Numbers lose precision for uint64
 	// Convert to uint64
@@ -562,7 +579,7 @@ func (a *App) CheckMod(modId string, verify bool) (interface{}, error) {
 	return map[string]interface{}{"success": true, "status": status, "progress": progress, "stateFlags": state}, nil
 }
 
-func (a *App) FetchModDetails(modIds []string) (interface{}, error) {
+func (a *App) FetchModDetails(modIds []string, light bool) (interface{}, error) {
 	// Use Steam Web API to fetch details
 	apiURL := "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 
@@ -582,23 +599,25 @@ func (a *App) FetchModDetails(modIds []string) (interface{}, error) {
 	if err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}, nil
 	}
+	// fmt.Println("[App] FetchModDetails RAW JSON:", string(body)) // DEBUG LOG REMOVED
 
-	type PublishedFileDetails struct {
-		PublishedFileId string      `json:"publishedfileid"`
-		Title           string      `json:"title"`
-		FileSize        interface{} `json:"file_size"` // Can be string or int? usually int in JSON but string in form? API varies. sidecar says simple JSON parse.
-		TimeUpdated     interface{} `json:"time_updated"`
-		PreviewUrl      string      `json:"preview_url"`
-	}
-	type ResponseContainer struct {
-		Response struct {
-			PublishedFileDetails []PublishedFileDetails `json:"publishedfiledetails"`
-		} `json:"response"`
-	}
-
+	// Structs moved to package level
 	var data ResponseContainer
 	if err := json.Unmarshal(body, &data); err != nil {
 		return map[string]interface{}{"success": false, "error": "JSON Parse Error: " + err.Error()}, nil
+	}
+	fmt.Printf("[App] Unmarshaled Data Count: %d (Light Mode: %t)\n", len(data.Response.PublishedFileDetails), light) // DEBUG LOG
+
+	// OPTIMIZATION: If Light mode, strip invalid mods and HEAVY descriptions
+	if light {
+		var clean []PublishedFileDetails
+		for _, item := range data.Response.PublishedFileDetails {
+			// Strip Description to save massive bandwidth/memory
+			item.Description = ""
+			clean = append(clean, item)
+		}
+		// Replace original list with lightweight list
+		data.Response.PublishedFileDetails = clean
 	}
 
 	// Transform to match sidecar format (it just passes "details: []")
@@ -688,7 +707,7 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 			if finalServerName == "" {
 				finalServerName = fmt.Sprintf("%s:%d", ip, port)
 				// Try to fetch real name
-				if info, err := a.FetchServerInfo(ip, port); err == nil {
+				if info, err := a.FetchServerInfo(ip, port, 2000); err == nil {
 					if n, ok := info["name"].(string); ok {
 						finalServerName = n
 					}
@@ -980,4 +999,22 @@ func (a *App) SaveMapCache(mapName string, url string) (map[string]interface{}, 
 // joinMods joins a slice of mod paths with the platform specific separator (DayZ expects semicolon)
 func joinMods(paths []string) string {
 	return strings.Join(paths, ";")
+}
+
+// -- STRUCTS --
+
+type PublishedFileDetails struct {
+	PublishedFileId string `json:"publishedfileid"`
+	Title           string `json:"title"`
+	FileSize        string `json:"file_size"`
+	TimeUpdated     int64  `json:"time_updated"`
+	Creator         string `json:"creator"`
+	PreviewUrl      string `json:"preview_url"`
+	Description     string `json:"description,omitempty"`
+}
+
+type ResponseContainer struct {
+	Response struct {
+		PublishedFileDetails []PublishedFileDetails `json:"publishedfiledetails"`
+	} `json:"response"`
 }
