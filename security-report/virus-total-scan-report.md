@@ -16,7 +16,7 @@ You may see a flag from the following vendor:
 3.  **Go & Wails Architecture:** The application is built using **Go**, which produces large statically linked binaries. This structure, combined with a new certificate, can trigger aggressive heuristic filters.
 
 ## Verification
-**[View Latest VirusTotal Scan Report](https://www.virustotal.com/gui/file/1fc19d34f2db4ea2b91c922786a06a13a7ba874e276d546ddf334972bdb80f2f?nocache=1)**
+**[View Latest VirusTotal Scan Report](https://www.virustotal.com/gui/file/3d9ac67f4ccbacc3da4ff3a5c7c9cda668e94b5bfc74f3e1561abb5abef3d49f?nocache=1)**
 
 Since implementing Code Signing, the application is now **Undetected** (Clean) by the vast majority of industry leaders, including:
 - **Microsoft (Defender)** - Clean
