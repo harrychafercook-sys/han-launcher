@@ -1,12 +1,12 @@
 [
     {
         "tag": "OFFICIAL PLAYTEST",
-        "ip": "216.245.177.48",
-        "gamePort": "2322",
-        "queryPort": "2323",
-        "startDate": "21/01/2026",
-        "endDate": "30/01/2026",
-        "mapName": "The Channel"
+        "ip": "45.151.81.211",
+        "gamePort": "2502",
+        "queryPort": "2503",
+        "startDate": "05/02/2026",
+        "endDate": "30/02/2026",
+        "mapName": "Azalea"
     },
     {
         "tag": "OFFICIAL PLAYTEST",
