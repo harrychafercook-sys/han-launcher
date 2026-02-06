@@ -10,20 +10,20 @@
     },
     {
         "tag": "OFFICIAL PLAYTEST",
-        "ip": "104.234.251.163",
-        "gamePort": "2342",
-        "queryPort": "2343",
-        "startDate": "21/01/2026",
-        "endDate": "30/01/2026",
-        "mapName": "The Channel"
+        "ip": "95.135.0.121",
+        "gamePort": "2302",
+        "queryPort": "2306",
+        "startDate": "05/02/2026",
+        "endDate": "30/02/2026",
+        "mapName": "Green County"
     },
     {
         "tag": "OFFICIAL PLAYTEST",
-        "ip": "103.212.227.83",
-        "gamePort": "2322",
-        "queryPort": "2323",
-        "startDate": "21/01/2026",
-        "endDate": "30/01/2026",
-        "mapName": "The Channel"
+        "ip": "95.135.0.121",
+        "gamePort": "2402",
+        "queryPort": "2406",
+        "startDate": "05/02/2026",
+        "endDate": "30/02/2026",
+        "mapName": "Green County"
     }
 ]
