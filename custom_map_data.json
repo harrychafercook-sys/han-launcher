@@ -193,7 +193,7 @@
         "name": "Avalon",
         "url": "https://dayz.xam.nu/avalon",
         "modName": "",
-        "discord": "https://discord.gg/7KQrmqQKHy"
+        "discord": "https://discord.gg/k4C4c8MN4b"
     },
     {
         "key": "onforin",
@@ -222,5 +222,12 @@
         "url": "https://media.discordapp.net/attachments/978590020761944074/1495161165683101846/mapa_muntsarrat0.55_2k.jpg?ex=69e88898&is=69e73718&hm=744731b44159d711de845970d37479d4dc905f9267b5b11e461bffafd254f86a&=&format=webp&width=930&height=930",
         "modName": "Muntsarrat Map",
         "discord": "http://dsc.gg/dayzmuntsarrat"
-    }    
+    },
+    {
+        "key": "nyheim",
+        "name": "nyheim",
+        "url": "https://www.izurvive.com/nyheim/",
+        "modName": "Nyheim_2.0",
+        "discord": "https://discord.gg/k4C4c8MN4b"
+    }   
 ]
