@@ -1,12 +1,12 @@
 [
     {
-        "tag": "OFFICIAL PLAYTEST",
-        "ip": "45.151.81.211",
-        "gamePort": "2502",
-        "queryPort": "2503",
-        "startDate": "05/02/2026",
-        "endDate": "30/02/2026",
-        "mapName": "Azalea"
+        "tag": "NEW MAP",
+        "ip": "146.0.87.123",
+        "gamePort": "2302",
+        "queryPort": "27016",
+        "startDate": "15/05/2026",
+        "endDate": "30/05/2026",
+        "mapName": "NEW YORK"
     },
     {
         "tag": "OFFICIAL PLAYTEST",
