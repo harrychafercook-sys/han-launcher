@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	A2S_INFO_HEADER  = 0x54
-	A2S_RULES_HEADER = 0x56
+	A2S_INFO_HEADER   = 0x54
+	A2S_RULES_HEADER  = 0x56
 	A2S_PLAYER_HEADER = 0x55
-	A2S_CHALLENGE    = 0x41
-	A2S_INFO_RESP    = 0x49
-	A2S_RULES_RESP   = 0x45
+	A2S_CHALLENGE     = 0x41
+	A2S_INFO_RESP     = 0x49
+	A2S_RULES_RESP    = 0x45
 	A2S_PLAYER_RESP   = 0x44
 )
 
@@ -39,15 +39,15 @@ type ServerInfo struct {
 	Latency     int64  `json:"latency"`
 }
 
-func QueryInfo(ip string, port int) (*ServerInfo, error) {
+func QueryInfo(ip string, port int, timeout time.Duration) (*ServerInfo, error) {
 	address := fmt.Sprintf("%s:%d", ip, port)
-	conn, err := net.DialTimeout("udp", address, 2*time.Second)
+	conn, err := net.DialTimeout("udp", address, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
 
@@ -100,6 +100,9 @@ func QueryInfo(ip string, port int) (*ServerInfo, error) {
 		// Usually users want to know "how long to get a packet back".
 		// Let's reset start to measure the info trip.
 		start = time.Now()
+		if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+			return nil, err
+		}
 
 		if _, err := conn.Write(req2.Bytes()); err != nil {
 			return nil, err
@@ -318,15 +321,15 @@ func parseRulesPayload(b []byte) (map[string]string, error) {
 	return rules, nil
 }
 
-func QueryPlayers(ip string, port int) ([]*Player, error) {
+func QueryPlayers(ip string, port int, timeout time.Duration) ([]*Player, error) {
 	address := fmt.Sprintf("%s:%d", ip, port)
-	conn, err := net.DialTimeout("udp", address, 2*time.Second)
+	conn, err := net.DialTimeout("udp", address, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
 
@@ -360,6 +363,11 @@ func QueryPlayers(ip string, port int) ([]*Player, error) {
 		return parsePlayersPayload(data[5:])
 	} else {
 		return nil, fmt.Errorf("expected challenge, got %x", header)
+	}
+
+	// RESET DEADLINE for Data Phase
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
 	}
 
 	// 2. Send Challenge Response
@@ -414,7 +422,7 @@ func parsePlayersPayload(b []byte) ([]*Player, error) {
 
 	for i := 0; i < int(numPlayers) && reader.Len() > 0; i++ {
 		p := &Player{}
-		
+
 		// Index (1 byte)
 		idx, _ := reader.ReadByte()
 		p.Index = idx

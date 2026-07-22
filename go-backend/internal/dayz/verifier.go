@@ -48,23 +48,34 @@ func VerifyMods(ip string, port int, timeoutSeconds int) *VerificationResult {
 	// 1. Get Server Info
 	info, err := client.GetInfo()
 	if err != nil {
+		fmt.Printf("[Verifier] Info Query Failed for %s: %v\n", address, err)
 		return &VerificationResult{Success: false, Error: fmt.Sprintf("Error querying info: %v", err)}
 	}
+	fmt.Printf("[Verifier] Info Success for %s | Name: %s | GamePort: %d\n", address, info.Name, info.Port)
 
 	// 2. Query Rules using A3SB (Wait for A2S to complete first to avoid conflict on single socket if shared, though new client manages it)
 	a3sbClient := &a3sb.Client{Client: client}
 	rules, err := a3sbClient.GetRules(221100)
 	if err != nil {
+		fmt.Printf("[Verifier] Rules Query Failed for %s: %v\n", address, err)
 		return &VerificationResult{Success: false, Error: fmt.Sprintf("Error querying rules: %v", err)}
+	}
+	if rules != nil {
+		fmt.Printf("[Verifier] Rules Success for %s | Mod Count: %d\n", address, len(rules.Mods))
 	}
 
 	// 3. Process Mods
 	var outputMods []Mod
 	if rules != nil && len(rules.Mods) > 0 {
 		for _, m := range rules.Mods {
+			id := fmt.Sprintf("%d", m.ID)
+			// Fix for broken mod ID (Sunnielemondrops_Gear)
+			if m.Name == "Sunnielemondrops_Gear" {
+				id = "3621601061"
+			}
 			outputMods = append(outputMods, Mod{
 				Name:       m.Name,
-				WorkshopID: fmt.Sprintf("%d", m.ID),
+				WorkshopID: id,
 			})
 		}
 	}

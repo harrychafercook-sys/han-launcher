@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/ebitengine/purego"
@@ -11,6 +12,7 @@ import (
 
 var (
 	initialized bool
+	initMutex   sync.Mutex
 	libHandle   uintptr
 
 	// Core Functions
@@ -18,9 +20,10 @@ var (
 	f_RunCallbacks func()
 
 	// Friends Interface
-	ptrSteamFriends   uintptr
-	f_GetPersonaName  func(uintptr) string
-	f_GetPersonaState func(uintptr) int
+	ptrSteamFriends             uintptr
+	f_GetPersonaName            func(uintptr) string
+	f_GetPersonaState           func(uintptr) int
+	f_ActivateGameOverlayToUser func(uintptr, string, uint64)
 
 	// User Interface
 	ptrSteamUser uintptr
@@ -29,6 +32,9 @@ var (
 
 // Init initializes the Steamworks API manually.
 func Init() error {
+	initMutex.Lock()
+	defer initMutex.Unlock()
+
 	if initialized {
 		return nil
 	}
@@ -90,6 +96,7 @@ func bindFriends() {
 		bindSafe(&f_GetFriendPersonaName, libHandle, "SteamAPI_ISteamFriends_GetFriendPersonaName")
 		bindSafe(&f_GetFriendGamePlayed, libHandle, "SteamAPI_ISteamFriends_GetFriendGamePlayed")
 		bindSafe(&f_GetFriendPersonaState, libHandle, "SteamAPI_ISteamFriends_GetFriendPersonaState")
+		bindSafe(&f_ActivateGameOverlayToUser, libHandle, "SteamAPI_ISteamFriends_ActivateGameOverlayToUser")
 	}
 
 	// Try SteamInternal_CreateInterface (Modern/Internal way)
@@ -198,6 +205,8 @@ func GetFriendPersonaState(steamID uint64) int {
 
 // IsInitialized returns the current state.
 func IsInitialized() bool {
+	initMutex.Lock()
+	defer initMutex.Unlock()
 	return initialized
 }
 

@@ -22,12 +22,14 @@ type FriendGameInfo_t struct {
 
 // SteamFriend info struct for frontend
 type SteamFriend struct {
-	SteamID     uint64 `json:"steamId"`
+	SteamID     uint64 `json:"steamId,string"`
 	Name        string `json:"name"`
 	IsOnline    bool   `json:"isOnline"`
 	IsPlaying   bool   `json:"isPlaying"`
 	GameName    string `json:"gameName"` // Only set if IsPlaying is true
 	GameAddress string `json:"gameAddress"`
+	GamePort    uint16 `json:"gamePort"`
+	QueryPort   uint16 `json:"queryPort"`
 }
 
 var (
@@ -47,29 +49,28 @@ func int2ip(nn uint32) string {
 	return ip.String()
 }
 
+// GetFriendsConnectionState mirrors the state check used before exposing the
+// Friends list. Checking the local Steam ID first has proven more reliable
+// than treating successful Steamworks initialization as Friends connectivity.
+func GetFriendsConnectionState() int {
+	if !initialized || ptrSteamFriends == 0 || f_GetFriendCount == nil {
+		return 0
+	}
+
+	myID := GetSteamID()
+	if myID != 0 {
+		return GetFriendPersonaState(myID)
+	}
+	return GetPersonaState()
+}
+
 // GetFriends returns a list of friends playing DayZ or just online
 func GetFriends() []SteamFriend {
 	if !initialized || ptrSteamFriends == 0 || f_GetFriendCount == nil {
 		return []SteamFriend{}
 	}
 
-	// Check myself using GetFriendPersonaState on my own SteamID
-	myID := GetSteamID()
-
-	// If we have a valid ID, trust its state (even if 0/Offline)
-	// If ID is 0, we might strictly fail or try global fallback (which is buggy, but maybe better than nothing?)
-	// Given global fallback returns 1 (Online) falsely, it's better to default to 0 if ID is missing?
-	// But let's stick to the plan: Trust GetFriendPersonaState(myID).
-
-	state := 0
-	if myID != 0 {
-		state = GetFriendPersonaState(myID)
-	} else {
-		// Fallback: If we can't get ID, try global state (legacy behavior)
-		state = GetPersonaState()
-	}
-
-	if state == 0 {
+	if GetFriendsConnectionState() == 0 {
 		return []SteamFriend{}
 	}
 
@@ -94,6 +95,7 @@ func GetFriends() []SteamFriend {
 		dayzAppID := uint64(221100)
 		gameName := ""
 		gameAddress := ""
+		var gamePort, queryPort uint16
 
 		if isPlaying {
 			if gameInfo.GameID == dayzAppID {
@@ -101,8 +103,10 @@ func GetFriends() []SteamFriend {
 				if gameInfo.GameIP != 0 {
 					// Convert IP
 					ip := make(net.IP, 4)
-					binary.LittleEndian.PutUint32(ip, gameInfo.GameIP)
+					binary.BigEndian.PutUint32(ip, gameInfo.GameIP)
 					gameAddress = fmt.Sprintf("%s:%d", ip.String(), gameInfo.GamePort)
+					gamePort = gameInfo.GamePort
+					queryPort = gameInfo.QueryPort
 				}
 			} else {
 				gameName = "Other Game"
@@ -116,8 +120,45 @@ func GetFriends() []SteamFriend {
 			IsPlaying:   isPlaying,
 			GameName:    gameName,
 			GameAddress: gameAddress,
+			GamePort:    gamePort,
+			QueryPort:   queryPort,
 		})
 	}
 
 	return friends
+}
+
+// OpenChat opens the Steam overlay chat window for a specific user
+func OpenChat(steamID uint64) {
+	if !initialized {
+		fmt.Println("[Steamworks] OpenChat: Not initialized")
+		return
+	}
+	if ptrSteamFriends == 0 {
+		fmt.Println("[Steamworks] OpenChat: ptrSteamFriends is null")
+		return
+	}
+	if f_ActivateGameOverlayToUser == nil {
+		fmt.Println("[Steamworks] OpenChat: f_ActivateGameOverlayToUser is nil")
+		return
+	}
+	fmt.Printf("[Steamworks] OpenChat: Activating 'chat' overlay for %d\n", steamID)
+	f_ActivateGameOverlayToUser(ptrSteamFriends, "chat", steamID)
+}
+
+// GetFriendPersonaName returns the name for a given SteamID string
+// wrapper for f_GetFriendPersonaName
+func GetFriendPersonaName(steamIDString string) string {
+	if !initialized || ptrSteamFriends == 0 || f_GetFriendPersonaName == nil {
+		return ""
+	}
+	var steamID uint64
+	// Parse string to uint64
+	fmt.Sscanf(steamIDString, "%d", &steamID)
+
+	if steamID == 0 {
+		return ""
+	}
+
+	return f_GetFriendPersonaName(ptrSteamFriends, steamID)
 }

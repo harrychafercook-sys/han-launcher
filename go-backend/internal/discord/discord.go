@@ -57,6 +57,10 @@ func UpdatePresence(details, state, largeImage, largeText string) error {
 		return fmt.Errorf("discord not connected")
 	}
 
+	if ConfiguredClientId == "" {
+		return fmt.Errorf("client id not configured")
+	}
+
 	return sendActivity()
 }
 

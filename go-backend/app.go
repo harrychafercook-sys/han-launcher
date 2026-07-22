@@ -5,11 +5,15 @@ import (
 	"dayz-launcher-go/internal/a2s"
 	"dayz-launcher-go/internal/dayz"
 	"dayz-launcher-go/internal/discord"
+	"dayz-launcher-go/internal/dzsa"
 	"syscall"
 
 	"dayz-launcher-go/internal/steamworks"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
+	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +22,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -30,16 +36,19 @@ const UseNativeSteamworks = true
 type App struct {
 	ctx               context.Context
 	httpClient        *http.Client
+	dzsaService       *dzsa.Service
 	lastPersonaName   string
 	priorityCooldowns map[string]time.Time
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	return &App{
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		httpClient:        httpClient,
+		dzsaService:       dzsa.NewService(httpClient),
 		priorityCooldowns: make(map[string]time.Time),
 	}
 }
@@ -138,6 +147,10 @@ func (a *App) startup(ctx context.Context) {
 
 // -- HTTP METHODS (BattleMetrics Proxy) --
 
+const dayZMetricsBaseURL = "https://dayzmetrics.com"
+
+var dayZMetricsServerPath = regexp.MustCompile(`^/api/server/\d+(?:/timeseries)?$`)
+
 type BMResponse struct {
 	Success   bool              `json:"success"`
 	Data      interface{}       `json:"data,omitempty"`
@@ -181,6 +194,265 @@ func (a *App) BattleMetricsFetch(url string) BMResponse {
 		Data:      data,
 		RateLimit: rateLimit,
 	}
+}
+
+// DayZMetricsFetch proxies the small set of public DayZMetrics endpoints used
+// by the server modal. Keeping the host fixed here avoids browser CORS issues
+// without allowing the frontend to turn this method into a general HTTP proxy.
+func (a *App) DayZMetricsFetch(path string) BMResponse {
+	body, err := a.dayZMetricsGet(path)
+	if err != nil {
+		return BMResponse{Success: false, Error: err.Error()}
+	}
+
+	var data interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return BMResponse{Success: false, Error: "JSON Parse Error: " + err.Error()}
+	}
+
+	return BMResponse{Success: true, Data: data}
+}
+
+// SaveDayZMetricsServerMetadata persists optional enrichment into the local
+// file-backed DZSA service. It is deliberately local-only and never writes
+// back to either external provider.
+func (a *App) SaveDayZMetricsServerMetadata(ip string, gamePort int, queryPort int, serverID int64, country string, perspective int) BMResponse {
+	if err := a.dzsaService.SaveDayZMetricsMetadata(ip, gamePort, queryPort, serverID, country, perspective); err != nil {
+		return BMResponse{Success: false, Error: err.Error()}
+	}
+	return BMResponse{Success: true}
+}
+
+// RemoveDayZMetricsServerID clears a confirmed stale ID mapping from the
+// file-backed metadata and rewrites any enriched local server caches.
+func (a *App) RemoveDayZMetricsServerID(ip string, gamePort int, queryPort int, serverID int64) BMResponse {
+	if err := a.dzsaService.RemoveDayZMetricsID(ip, gamePort, queryPort, serverID); err != nil {
+		return BMResponse{Success: false, Error: err.Error()}
+	}
+	return BMResponse{Success: true}
+}
+
+// GetDayZMetricsServerMetadata restores file-backed enrichment for manual
+// playtest entries before they are inserted into the frontend server list.
+func (a *App) GetDayZMetricsServerMetadata(ip string, gamePort int, queryPort int) BMResponse {
+	metadata, ok := a.dzsaService.GetDayZMetricsMetadata(ip, gamePort, queryPort)
+	if !ok {
+		return BMResponse{Success: false, Error: "metadata not found"}
+	}
+	data := map[string]interface{}{
+		"dayzMetricsId": metadata.ExternalID,
+		"country":       metadata.Country,
+	}
+	if metadata.FirstPersonOnly != nil {
+		data["thirdPerson"] = !*metadata.FirstPersonOnly
+	}
+	return BMResponse{Success: true, Data: data}
+}
+
+func (a *App) dayZMetricsGet(path string) ([]byte, error) {
+	parsed, err := url.Parse(path)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" {
+		return nil, errors.New("invalid DayZMetrics path")
+	}
+
+	if parsed.Path != "/api/servers" && !dayZMetricsServerPath.MatchString(parsed.Path) {
+		return nil, errors.New("unsupported DayZMetrics endpoint")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dayZMetricsBaseURL+parsed.RequestURI(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "HAN-Launcher/3.0.0 (+https://teacherharry.com/hanlauncher/)")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP Error %d", resp.StatusCode)
+	}
+
+	const maxResponseSize = 4 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxResponseSize {
+		return nil, errors.New("DayZMetrics response was too large")
+	}
+	return body, nil
+}
+
+type dayZMetricsSearchServer struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Country     string `json:"country"`
+	Map         string `json:"map"`
+	Version     string `json:"version"`
+	Players     int    `json:"players"`
+	MaxPlayers  int    `json:"max_players"`
+	Password    bool   `json:"password"`
+	FirstPerson bool   `json:"first_person"`
+	GameTime    string `json:"game_time"`
+}
+
+type dayZMetricsSearchResponse struct {
+	Servers []dayZMetricsSearchServer `json:"servers"`
+}
+
+type dayZMetricsServerDetail struct {
+	ID          int64  `json:"id"`
+	IP          string `json:"ip"`
+	QueryPort   int    `json:"query_port"`
+	GamePort    int    `json:"game_port"`
+	Name        string `json:"name"`
+	Country     string `json:"country"`
+	Map         string `json:"map"`
+	MaxPlayers  int    `json:"max_players"`
+	Version     string `json:"version"`
+	FirstPerson bool   `json:"first_person"`
+	GameTime    string `json:"game_time"`
+	Mods        []struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"mods"`
+	Current struct {
+		Players    int    `json:"players"`
+		MaxPlayers int    `json:"max_players"`
+		Status     string `json:"status"`
+	} `json:"current"`
+}
+
+// SearchDayZMetricsServers enriches only explicit name searches. It never runs
+// for the empty main-list query, and newly discovered endpoints are persisted
+// by the DZSA service as a search-only overlay.
+func (a *App) SearchDayZMetricsServers(query string, limit int) dzsa.QueryResult {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return dzsa.QueryResult{Success: true, Servers: []dzsa.Server{}, Limit: 0, Source: "dayzmetrics"}
+	}
+	if limit <= 0 || limit > 10 {
+		limit = 10
+	}
+
+	values := url.Values{
+		"q":      {query},
+		"scope":  {"community"},
+		"sort":   {"rank"},
+		"dir":    {"desc"},
+		"fakes":  {"hide"},
+		"online": {"1"},
+		"limit":  {strconv.Itoa(limit)},
+	}
+	body, err := a.dayZMetricsGet("/api/servers?" + values.Encode())
+	if err != nil {
+		return dzsa.QueryResult{Success: false, Servers: []dzsa.Server{}, Source: "dayzmetrics", Error: err.Error()}
+	}
+
+	var search dayZMetricsSearchResponse
+	if err := json.Unmarshal(body, &search); err != nil {
+		return dzsa.QueryResult{Success: false, Servers: []dzsa.Server{}, Source: "dayzmetrics", Error: err.Error()}
+	}
+	if len(search.Servers) == 0 {
+		return dzsa.QueryResult{Success: true, Servers: []dzsa.Server{}, Limit: limit, Source: "dayzmetrics"}
+	}
+
+	resolved := make([]*dzsa.Server, len(search.Servers))
+	details := make([]*dayZMetricsServerDetail, len(search.Servers))
+	var wait sync.WaitGroup
+	semaphore := make(chan struct{}, 3)
+	for index, summary := range search.Servers {
+		if known, ok := a.dzsaService.FindKnownByName(summary.Name); ok {
+			resolved[index] = &known
+			continue
+		}
+
+		wait.Add(1)
+		go func(index int, serverID int64) {
+			defer wait.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			body, fetchErr := a.dayZMetricsGet(fmt.Sprintf("/api/server/%d", serverID))
+			if fetchErr != nil {
+				return
+			}
+			var detail dayZMetricsServerDetail
+			if json.Unmarshal(body, &detail) == nil {
+				details[index] = &detail
+			}
+		}(index, summary.ID)
+	}
+	wait.Wait()
+
+	imports := make([]dzsa.ImportedServer, 0, len(search.Servers))
+	positions := make([]int, 0, len(search.Servers))
+	for index, detail := range details {
+		if detail == nil {
+			continue
+		}
+		summary := search.Servers[index]
+		mods := make([]dzsa.ImportedMod, 0, len(detail.Mods))
+		for _, item := range detail.Mods {
+			mods = append(mods, dzsa.ImportedMod{ID: strconv.FormatInt(item.ID, 10), Name: item.Name})
+		}
+		maxPlayers := detail.Current.MaxPlayers
+		if maxPlayers == 0 {
+			maxPlayers = detail.MaxPlayers
+		}
+		imports = append(imports, dzsa.ImportedServer{
+			ExternalID:      detail.ID,
+			Name:            detail.Name,
+			IP:              detail.IP,
+			GamePort:        detail.GamePort,
+			QueryPort:       detail.QueryPort,
+			Map:             detail.Map,
+			Players:         detail.Current.Players,
+			MaxPlayers:      maxPlayers,
+			Password:        summary.Password,
+			Version:         detail.Version,
+			Time:            detail.GameTime,
+			FirstPersonOnly: detail.FirstPerson,
+			Country:         detail.Country,
+			Mods:            mods,
+		})
+		positions = append(positions, index)
+	}
+	merged := a.dzsaService.MergeDayZMetricsServers(imports)
+	for index, server := range merged {
+		if index < len(positions) {
+			copy := server
+			resolved[positions[index]] = &copy
+		}
+	}
+
+	servers := make([]dzsa.Server, 0, len(resolved))
+	seen := make(map[string]bool)
+	for _, server := range resolved {
+		if server == nil {
+			continue
+		}
+		key := fmt.Sprintf("%s:%d:%d", strings.ToLower(server.Attributes.IP), server.Attributes.Port, server.Attributes.PortQuery)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		servers = append(servers, *server)
+	}
+	return dzsa.QueryResult{Success: true, Servers: servers, Total: len(servers), Limit: limit, Source: "dayzmetrics"}
+}
+
+// FetchDZSAServers downloads the DZSA launcher feed on the first refresh, then
+// performs searching, filtering and paging against the in-memory copy. If the
+// download fails, the service transparently falls back to its last valid cache.
+func (a *App) FetchDZSAServers(query string, filters map[string]interface{}, offset int, limit int, refresh bool) dzsa.QueryResult {
+	return a.dzsaService.Query(query, filters, offset, limit, refresh)
 }
 
 // -- UDP METHODS --
@@ -270,10 +542,17 @@ func (a *App) GetSteamStatus() interface{} {
 	// Check if Steamworks is initialized
 	isInit := steamworks.IsInitialized()
 	if !isInit {
-		return map[string]interface{}{"success": false, "connected": false, "error": "Steam not running"}
+		return map[string]interface{}{
+			"success":          false,
+			"connected":        false,
+			"friendsConnected": false,
+			"personaState":     0,
+			"error":            "Steam not running",
+		}
 	}
 
 	name := steamworks.GetPersonaName()
+	personaState := steamworks.GetFriendsConnectionState()
 	if name != "" {
 		a.lastPersonaName = name
 	}
@@ -284,7 +563,13 @@ func (a *App) GetSteamStatus() interface{} {
 		finalName = "Survivor" // Default until fetched
 	}
 
-	return map[string]interface{}{"success": true, "connected": true, "name": finalName}
+	return map[string]interface{}{
+		"success":          true,
+		"connected":        true,
+		"friendsConnected": personaState != 0,
+		"personaState":     personaState,
+		"name":             finalName,
+	}
 }
 
 func (a *App) SubscribeWorkshop(modId string) (interface{}, error) {
@@ -420,6 +705,30 @@ func (a *App) DeleteAllModFiles() (interface{}, error) {
 			}
 		} else {
 			fmt.Printf("[App] Workshop temp dir not found: %s\n", workshopTempDir)
+		}
+
+		// E. Delete DZSA Mods Folder (!dzsal)
+		// This is usually in steamapps/common/DayZ/!dzsal
+		steamAppsDir = filepath.Dir(filepath.Dir(filepath.Dir(workshopPath))) // .../steamapps
+		dzsalDir := filepath.Join(steamAppsDir, "common", "DayZ", "!dzsal")
+
+		// Also try typical steam library structure if above fails?
+		// Actually if workshop is in steamapps/workshop, common/DayZ is surely in steamapps/common/DayZ.
+
+		if _, err := os.Stat(dzsalDir); err == nil {
+			fmt.Printf("[App] Clearing DZSA Folder: %s\n", dzsalDir)
+			err := os.RemoveAll(dzsalDir)
+			if err != nil {
+				fmt.Printf("[App] Failed to delete DZSA dir %s: %v\n", dzsalDir, err)
+				errors++
+			} else {
+				fmt.Printf("[App] Deleted DZSA dir: %s\n", dzsalDir)
+				count++
+			}
+		} else {
+			// Try checking if capitalization is different or if it's relative to executable?
+			// But for now, standard path is fine.
+			fmt.Printf("[App] DZSA dir not found: %s\n", dzsalDir)
 		}
 
 	} else {
@@ -604,9 +913,58 @@ func (a *App) FetchModDetails(modIds []string, light bool) (interface{}, error) 
 	// Structs moved to package level
 	var data ResponseContainer
 	if err := json.Unmarshal(body, &data); err != nil {
-		return map[string]interface{}{"success": false, "error": "JSON Parse Error: " + err.Error()}, nil
 	}
 	fmt.Printf("[App] Unmarshaled Data Count: %d (Light Mode: %t)\n", len(data.Response.PublishedFileDetails), light) // DEBUG LOG
+
+	// RESOLVE CREATOR NAMES (Batched/Fallback)
+	// Extract all creator IDs
+	var creatorIDs []string
+	idMap := make(map[string]bool)
+	for _, item := range data.Response.PublishedFileDetails {
+		if item.Creator != "" && !idMap[item.Creator] {
+			creatorIDs = append(creatorIDs, item.Creator)
+			idMap[item.Creator] = true
+		}
+	}
+
+	// Fetch Names
+	nameMap := make(map[string]string)
+
+	// 1. Try Native Steamworks first (Fastest, no HTTP)
+	if len(creatorIDs) > 0 {
+		if steamworks.IsInitialized() {
+			for _, idStr := range creatorIDs {
+				name := steamworks.GetFriendPersonaName(idStr)
+				if name != "" && name != "[unknown]" {
+					nameMap[idStr] = name
+				}
+			}
+		}
+	}
+
+	// 2. Fallback to XML Endpoint (Slower, but guaranteed if public)
+	// We only fetch if missing from native cache
+	for _, idStr := range creatorIDs {
+		if _, ok := nameMap[idStr]; !ok {
+			// Fetch via XML
+			// Run in goroutine? No, we need it now.
+			// But sequentially fetching 10 names is slow.
+			// Let's do a simple parallel fetch if > 1?
+			// For now, simple serial is safer.
+			name := a.fetchSteamProfileName(idStr)
+			if name != "" {
+				nameMap[idStr] = name
+			}
+		}
+	}
+
+	// Populate CreatorName
+	for i := range data.Response.PublishedFileDetails {
+		cID := data.Response.PublishedFileDetails[i].Creator
+		if name, ok := nameMap[cID]; ok {
+			data.Response.PublishedFileDetails[i].CreatorName = name
+		}
+	}
 
 	// OPTIMIZATION: If Light mode, strip invalid mods and HEAVY descriptions
 	if light {
@@ -791,53 +1149,100 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 
 		fmt.Printf("[App] Launching EXE: %s\n", exePath)
 
-		// Construct Args
-		args := []string{
-			fmt.Sprintf("-connect=%s", ip),
-			fmt.Sprintf("-port=%d", port),
-			"-noSplash",
-			"-noPause",
-			"-skipIntro",
-			"-world=empty",
-			"-noBenchmark",
-		}
+		var args []string
 
-		if name != "" {
-			args = append(args, fmt.Sprintf("-name=%s", name))
-		}
+		if strings.HasPrefix(launchParams, "__FULL__ ") {
+			fullStr := strings.TrimPrefix(launchParams, "__FULL__ ")
 
-		if modStr != "" {
-			unquote := regexp.MustCompile(`^"(.*)"$`)
-			cleanMod := unquote.ReplaceAllString(modStr, "$1")
-			args = append(args, cleanMod)
-		}
+			// We must parse the full string handling quotes.
+			// A simple CSV parser with space as delimiter handles quoted command line arguments perfectly.
+			r := csv.NewReader(strings.NewReader(fullStr))
+			r.Comma = ' '
+			r.LazyQuotes = true
+			parsedArgs, err := r.Read()
 
-		// Append Custom Launch Parameters (User Defined)
-		if launchParams != "" {
-			// Helper to check for existence
-			contains := func(slice []string, item string) bool {
-				for _, s := range slice {
-					if s == item {
-						return true
-					}
-				}
-				return false
-			}
-
-			// Split by space to handle multiple params
-			params := regexp.MustCompile(`\s+`).Split(launchParams, -1)
-			for _, p := range params {
-				if p != "" {
-					// Deduplicate: Don't add if already in args
-					if !contains(args, p) {
+			if err == nil && len(parsedArgs) > 0 {
+				// Remove empty strings that might result from multiple spaces
+				for _, p := range parsedArgs {
+					if strings.TrimSpace(p) != "" {
 						args = append(args, p)
-					} else {
-						fmt.Printf("[App] Skipping duplicate param: %s\n", p)
 					}
 				}
+			} else {
+				// Fallback to simple split if parsing fails
+				args = regexp.MustCompile(`\s+`).Split(fullStr, -1)
 			}
-			fmt.Printf("[App] Custom Params Processed. Final Args: %v\n", args)
-		}
+
+			// Since the UI passes mod IDs instead of absolute paths (e.g. -mod=123;456),
+			// we need to replace the mod argument with the resolved absolute paths from `modStr`.
+			if modStr != "" {
+				unquote := regexp.MustCompile(`^"(.*)"$`)
+				cleanMod := unquote.ReplaceAllString(modStr, "$1")
+
+				// Find and replace the placeholder mod string with the real one
+				replaced := false
+				for i, arg := range args {
+					if strings.HasPrefix(arg, "-mod=") {
+						args[i] = cleanMod
+						replaced = true
+						break
+					}
+				}
+				// If the user deleted it, we append it back to ensure they can connect
+				if !replaced {
+					args = append(args, cleanMod)
+				}
+			}
+
+		} else {
+			// Construct Default Args
+			args = []string{
+				fmt.Sprintf("-connect=%s", ip),
+				fmt.Sprintf("-port=%d", port),
+				"-noSplash",
+				"-noPause",
+				"-skipIntro",
+				"-world=empty",
+				"-noBenchmark",
+			}
+
+			if name != "" {
+				args = append(args, fmt.Sprintf("-name=%s", name))
+			}
+
+			if modStr != "" {
+				unquote := regexp.MustCompile(`^"(.*)"$`)
+				cleanMod := unquote.ReplaceAllString(modStr, "$1")
+				args = append(args, cleanMod)
+			}
+
+			// Append Custom Launch Parameters (User Defined)
+			if launchParams != "" {
+				// Helper to check for existence
+				contains := func(slice []string, item string) bool {
+					for _, s := range slice {
+						if s == item {
+							return true
+						}
+					}
+					return false
+				}
+
+				// Split by space to handle multiple params
+				params := regexp.MustCompile(`\s+`).Split(launchParams, -1)
+				for _, p := range params {
+					if p != "" {
+						// Deduplicate: Don't add if already in args
+						if !contains(args, p) {
+							args = append(args, p)
+						} else {
+							fmt.Printf("[App] Skipping duplicate param: %s\n", p)
+						}
+					}
+				}
+				fmt.Printf("[App] Custom Params Processed. Final Args: %v\n", args)
+			}
+		} // Close the else block
 
 		cmd := exec.Command(exePath, args...)
 		cmd.Dir = gamePath // Important for BattlEye
@@ -1001,6 +1406,40 @@ func joinMods(paths []string) string {
 	return strings.Join(paths, ";")
 }
 
+// fetchSteamProfileName scrapes the XML endpoint for a user's name
+// This avoids needing an API Key for GetPlayerSummaries
+func (a *App) fetchSteamProfileName(steamID string) string {
+	url := fmt.Sprintf("https://steamcommunity.com/profiles/%s/?xml=1", steamID)
+	resp, err := a.httpClient.Get(url)
+	if err != nil {
+		fmt.Printf("[App] XML Profile Fetch Failed for %s: %v\n", steamID, err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return ""
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	// Minimal XML struct
+	type SteamProfile struct {
+		SteamID string `xml:"steamID"`
+	}
+
+	var p SteamProfile
+	if err := xml.Unmarshal(body, &p); err != nil {
+		return ""
+	}
+
+	// Logic check: XML often returns CDATA. Unmarshal handles basic CDATA usually.
+	return p.SteamID
+}
+
 // -- STRUCTS --
 
 type PublishedFileDetails struct {
@@ -1009,6 +1448,7 @@ type PublishedFileDetails struct {
 	FileSize        string `json:"file_size"`
 	TimeUpdated     int64  `json:"time_updated"`
 	Creator         string `json:"creator"`
+	CreatorName     string `json:"creator_name"`
 	PreviewUrl      string `json:"preview_url"`
 	Description     string `json:"description,omitempty"`
 }
