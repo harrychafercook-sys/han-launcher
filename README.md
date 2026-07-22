@@ -70,6 +70,7 @@ This project stands on the shoulders of giants. Special thanks to the following 
 -   [**Rich Go**](https://github.com/hugolgst/rich-go): Powers the real-time Discord status updates.
 
 ### Services & Tools
--   [**BattleMetrics API**](https://www.battlemetrics.com/developers/documentation): Provides the extensive server data, search capabilities, and playtest tracking.
+-   [**DZSA Launcher**](https://dayzsalauncher.com/): Provides the primary DayZ server directory and mod information used for server browsing and search.
+-   [**DayZMetrics**](https://dayzmetrics.com/): Provides optional server details including country, predicted restart times, and player activity history.
 -   [**Inno Setup**](https://jrsoftware.org/isinfo.php): The reliable installer technology used to package the launcher.
 
