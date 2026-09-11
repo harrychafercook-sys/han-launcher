@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,8 @@ import (
 )
 
 const serverListURL = "https://dayzsalauncher.com/api/v2/launcher/servers/dayz"
+
+var officialServerNamePattern = regexp.MustCompile(`^\d{4}\b`)
 
 type endpoint struct {
 	IP   string `json:"ip"`
@@ -732,6 +735,10 @@ func normalizeName(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
+func isOfficialServer(server rawServer) bool {
+	return len(server.Mods) == 0 && officialServerNamePattern.MatchString(strings.TrimSpace(server.Name))
+}
+
 func sameEndpoint(server rawServer, ip string, gamePort, queryPort int) bool {
 	if !strings.EqualFold(strings.TrimSpace(server.Endpoint.IP), strings.TrimSpace(ip)) {
 		return false
@@ -765,6 +772,9 @@ func matchesQuery(server rawServer, query string) bool {
 	needle := strings.ToLower(strings.Trim(strings.TrimSpace(query), `"`))
 	if needle == "" {
 		return true
+	}
+	if needle == "official" {
+		return isOfficialServer(server)
 	}
 	haystack := strings.ToLower(strings.Join([]string{
 		server.Name,
@@ -898,7 +908,7 @@ func normalize(server rawServer) Server {
 				Version:     server.Version,
 				Time:        server.Time,
 				Password:    server.Password,
-				Official:    false,
+				Official:    isOfficialServer(server),
 				ThirdPerson: !server.FirstPersonOnly,
 				Modded:      len(server.Mods) > 0,
 				ModNames:    modNames,

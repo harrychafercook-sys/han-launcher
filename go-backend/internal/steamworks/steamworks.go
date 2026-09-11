@@ -8,15 +8,19 @@ import (
 	"syscall"
 
 	"github.com/ebitengine/purego"
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
-	initialized bool
-	initMutex   sync.Mutex
-	libHandle   uintptr
+	initialized   bool
+	initAttempted bool
+	initFailure   error
+	initMutex     sync.Mutex
+	libHandle     uintptr
 
 	// Core Functions
 	f_Init         func() bool
+	f_Shutdown     func()
 	f_RunCallbacks func()
 
 	// Friends Interface
@@ -38,27 +42,40 @@ func Init() error {
 	if initialized {
 		return nil
 	}
-
-	// 1. Load Library
-	dll, err := syscall.LoadLibrary("steam_api64.dll")
-	if err != nil {
-		fmt.Println("[Steamworks] Warning: steam_api64.dll not found. Init failed.")
-		return err
+	if initAttempted {
+		if initFailure != nil {
+			return initFailure
+		}
+		return fmt.Errorf("SteamAPI_Init already failed; restart HAN to try again")
 	}
-	libHandle = uintptr(dll)
+	initAttempted = true
 
-	// 2. Bind Core Functions
-	// Try standard name first
-	bindSafe(&f_Init, libHandle, "SteamAPI_Init")
-	// Fallback to internal name (seen in some versions)
-	if f_Init == nil {
-		fmt.Println("[Steamworks] SteamAPI_Init not found, trying SteamInternal_SteamAPI_Init...")
-		bindSafe(&f_Init, libHandle, "SteamInternal_SteamAPI_Init")
+	// Load, bind and initialize once per HAN process. Failed SteamAPI_Init calls
+	// retain native memory in the Steam DLL, so retrying in the same process
+	// causes unbounded growth. Restarting HAN provides a clean retry after the
+	// user starts or signs into Steam.
+	if libHandle == 0 {
+		dll, err := syscall.LoadLibrary("steam_api64.dll")
+		if err != nil {
+			fmt.Println("[Steamworks] Warning: steam_api64.dll not found. Init failed.")
+			initFailure = err
+			return err
+		}
+		libHandle = uintptr(dll)
+
+		// Try the standard export first, then the internal fallback used by
+		// some Steamworks SDK versions.
+		bindSafe(&f_Init, libHandle, "SteamAPI_Init")
+		if f_Init == nil {
+			fmt.Println("[Steamworks] SteamAPI_Init not found, trying SteamInternal_SteamAPI_Init...")
+			bindSafe(&f_Init, libHandle, "SteamInternal_SteamAPI_Init")
+		}
+		bindSafe(&f_RunCallbacks, libHandle, "SteamAPI_RunCallbacks")
+		bindSafe(&f_Shutdown, libHandle, "SteamAPI_Shutdown")
 	}
 
-	bindSafe(&f_RunCallbacks, libHandle, "SteamAPI_RunCallbacks")
-
-	// 3. Call Init
+	// Call Init against the already-loaded module. A later retry can now
+	// succeed without loading or rebinding the DLL again.
 	if f_Init != nil {
 		if f_Init() {
 			initialized = true
@@ -69,13 +86,55 @@ func Init() error {
 			// 5. Initialize UGC/Apps (in ugc.go)
 			InitManualBindings(libHandle)
 
+			initFailure = nil
 			return nil
 		}
 	} else {
 		fmt.Println("[Steamworks] CRITICAL: Could not find SteamAPI_Init symbol.")
 	}
 
-	return fmt.Errorf("SteamAPI_Init returned false (or symbol missing)")
+	initFailure = fmt.Errorf("SteamAPI_Init returned false (or symbol missing)")
+	return initFailure
+}
+
+// ActiveSession reads Steam's own per-user state without invoking Steamworks.
+// Both values are zero while Steam is closed or waiting at its sign-in screen.
+func ActiveSession() (uint64, bool) {
+	key, err := registry.OpenKey(
+		registry.CURRENT_USER,
+		`Software\Valve\Steam\ActiveProcess`,
+		registry.QUERY_VALUE,
+	)
+	if err != nil {
+		return 0, false
+	}
+	defer key.Close()
+
+	activeUser, _, userErr := key.GetIntegerValue("ActiveUser")
+	pid, _, pidErr := key.GetIntegerValue("pid")
+	if userErr != nil || pidErr != nil || activeUser == 0 || pid == 0 {
+		return 0, false
+	}
+	return activeUser, true
+}
+
+// EndSession releases a successful Steamworks session and resets the one-shot
+// initialization guard. The next signed-out -> signed-in transition may then
+// make one fresh initialization attempt without accumulating failed retries.
+func EndSession() {
+	initMutex.Lock()
+	defer initMutex.Unlock()
+
+	if initialized && f_Shutdown != nil {
+		f_Shutdown()
+	}
+	initialized = false
+	initAttempted = false
+	initFailure = nil
+	ptrSteamFriends = 0
+	ptrSteamUser = 0
+	ptrSteamUGC = 0
+	ptrSteamApps = 0
 }
 
 func bindFriends() {

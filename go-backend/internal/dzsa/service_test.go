@@ -7,6 +7,53 @@ import (
 	"testing"
 )
 
+func TestOfficialServerInferenceAndSearch(t *testing.T) {
+	official := rawServer{
+		Name:     "1462 | EUROPE - DE | 1st Person Only",
+		GamePort: 2302,
+		Endpoint: endpoint{IP: "10.0.0.10", Port: 27016},
+	}
+	moddedNumeric := rawServer{
+		Name:     "1234 | Community Modded",
+		GamePort: 2302,
+		Endpoint: endpoint{IP: "10.0.0.11", Port: 27016},
+		Mods:     []mod{{Name: "Community Framework"}},
+	}
+	unmoddedCommunity := rawServer{
+		Name:     "Vanilla Community Server",
+		GamePort: 2302,
+		Endpoint: endpoint{IP: "10.0.0.12", Port: 27016},
+	}
+	fiveDigitPrefix := rawServer{
+		Name:     "12345 | Not an official identifier",
+		GamePort: 2302,
+		Endpoint: endpoint{IP: "10.0.0.13", Port: 27016},
+	}
+
+	if !isOfficialServer(official) {
+		t.Fatal("expected four-digit unmodded server to be inferred as official")
+	}
+	for _, server := range []rawServer{moddedNumeric, unmoddedCommunity, fiveDigitPrefix} {
+		if isOfficialServer(server) {
+			t.Fatalf("unexpected official inference for %#v", server)
+		}
+	}
+
+	normalized := normalize(official)
+	if !normalized.Attributes.Details.Official {
+		t.Fatalf("expected normalized official flag: %#v", normalized)
+	}
+
+	service := &Service{
+		servers: []rawServer{official, moddedNumeric, unmoddedCommunity, fiveDigitPrefix},
+		source:  "test",
+	}
+	result := service.Query("official", nil, 0, 100, false)
+	if len(result.Servers) != 1 || result.Servers[0].Attributes.Name != official.Name {
+		t.Fatalf("expected only inferred official server, got %#v", result.Servers)
+	}
+}
+
 func TestDayZMetricsDiscoveriesAreSearchOnlyAndPersisted(t *testing.T) {
 	cacheDir := t.TempDir()
 	service := &Service{

@@ -70,38 +70,100 @@ func (a *App) startup(ctx context.Context) {
 				discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
 			}
 
-			if err := steamworks.Init(); err != nil {
-				fmt.Println("[App] Native Steamworks Init Failed:", err)
-			}
+			var activeSteamUser uint64
+			var pendingSteamUser uint64
+			var pendingSteamSince time.Time
 
 			// Ticker for callbacks (Reduced from 33ms to 500ms for lower CPU)
 			ticker := time.NewTicker(500 * time.Millisecond)
+			// Steam's registry state is safe to poll while signed out. We only
+			// call SteamAPI_Init after a signed-in session remains stable.
+			steamStateTicker := time.NewTicker(1 * time.Second)
 			// Ticker for download updates (Reduced from 1s to 2s)
 			dlTicker := time.NewTicker(2 * time.Second)
 			// Ticker for Discord reconnection (5 seconds)
 			discordTicker := time.NewTicker(5 * time.Second)
 
 			defer ticker.Stop()
+			defer steamStateTicker.Stop()
 			defer dlTicker.Stop()
 			defer discordTicker.Stop()
+
+			updateSteamSession := func() {
+				detectedUser, signedIn := steamworks.ActiveSession()
+				if !signedIn {
+					if activeSteamUser != 0 || pendingSteamUser != 0 {
+						steamworks.EndSession()
+						activeSteamUser = 0
+						pendingSteamUser = 0
+						pendingSteamSince = time.Time{}
+						a.lastPersonaName = ""
+						runtime.EventsEmit(ctx, "steam-disconnected", map[string]interface{}{
+							"connected": false,
+							"isAdmin":   false,
+						})
+						fmt.Println("[App] Steam signed out; native session reset")
+					}
+					return
+				}
+
+				if activeSteamUser == detectedUser {
+					return
+				}
+				if activeSteamUser != 0 && activeSteamUser != detectedUser {
+					steamworks.EndSession()
+					activeSteamUser = 0
+					a.lastPersonaName = ""
+				}
+
+				if pendingSteamUser != detectedUser {
+					pendingSteamUser = detectedUser
+					pendingSteamSince = time.Now()
+					return
+				}
+				if time.Since(pendingSteamSince) < 3*time.Second {
+					return
+				}
+
+				// Mark this registry session as attempted even if native
+				// initialization fails. A new attempt is permitted only after
+				// Steam signs out and creates another session transition.
+				activeSteamUser = detectedUser
+				pendingSteamUser = 0
+				if err := steamworks.Init(); err != nil {
+					fmt.Println("[App] Native Steamworks Init Failed:", err)
+					return
+				}
+
+				name := steamworks.GetPersonaName()
+				steamID := steamworks.GetSteamID()
+				isAdmin := a.isAdminSteamAccount(steamID)
+				fmt.Printf("[App] Steam account connected: name=%q steamID=%d admin=%t\n", name, steamID, isAdmin)
+				if name != "" {
+					a.lastPersonaName = name
+				}
+				runtime.EventsEmit(ctx, "steam-connected", map[string]interface{}{
+					"connected": true,
+					"name":      name,
+					"steamId":   strconv.FormatUint(steamID, 10),
+					"isAdmin":   isAdmin,
+				})
+				fmt.Println("[App] Native Steamworks initialized after Steam sign-in")
+			}
 
 			for {
 				select {
 				case <-ctx.Done():
+					steamworks.EndSession()
 					discord.Close()
 					return
 				case <-ticker.C:
-					if !steamworks.IsInitialized() {
-						// Attempt to initialize if not already connected
-						if err := steamworks.Init(); err != nil {
-							// Still failed, just ignore until next tick
-						} else {
-							fmt.Println("[App] Native Steamworks Initialized via Loop")
-						}
-					} else {
+					if steamworks.IsInitialized() {
 						// Only run callbacks if initialized
 						steamworks.RunCallbacks()
 					}
+				case <-steamStateTicker.C:
+					updateSteamSession()
 				case <-dlTicker.C:
 					// Poll downloads and emit event if active
 					if steamworks.IsInitialized() {
@@ -267,7 +329,7 @@ func (a *App) dayZMetricsGet(path string) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "HAN-Launcher/3.0.0 (+https://teacherharry.com/hanlauncher/)")
+	req.Header.Set("User-Agent", "HAN-Launcher/3.0.4 (+https://dayz-quiz.com/)")
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
@@ -512,42 +574,57 @@ func (a *App) FetchServerPlayers(ip string, port int, timeoutMs int) (map[string
 // -- STEAM METHODS --
 
 func (a *App) LoginSteam() (interface{}, error) {
-	// 1. Try Init if not initialized
+	_, signedIn := steamworks.ActiveSession()
+	if !signedIn {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Steam is not signed in",
+		}, nil
+	}
 	if !steamworks.IsInitialized() {
-		fmt.Println("[App] LoginSteam: Steam not initialized, attempting init...")
-		if err := steamworks.Init(); err != nil {
-			fmt.Printf("[App] LoginSteam: Init failed: %v\n", err)
-			return map[string]interface{}{"success": false, "error": "Could not connect to Steam"}, nil
-		}
-		// If success, we should likely wait a tiny bit or just proceed
-		fmt.Println("[App] LoginSteam: Init successful!")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Steam was detected and HAN is connecting automatically",
+		}, nil
 	}
 
-	// 2. Fetch Name
 	name := steamworks.GetPersonaName()
 	if name == "" {
 		return map[string]interface{}{"success": false}, nil
 	}
 
-	// 3. Update Cache
 	a.lastPersonaName = name
+	steamID := steamworks.GetSteamID()
+	isAdmin := a.isAdminSteamAccount(steamID)
 
 	// Emit Event so Frontend updates immediately (if called from other modals)
-	runtime.EventsEmit(a.ctx, "steam-connected", map[string]interface{}{"connected": true, "name": name})
+	status := map[string]interface{}{
+		"connected": true,
+		"name":      name,
+		"steamId":   strconv.FormatUint(steamID, 10),
+		"isAdmin":   isAdmin,
+	}
+	runtime.EventsEmit(a.ctx, "steam-connected", status)
 
-	return map[string]interface{}{"success": true, "name": name}, nil
+	status["success"] = true
+	return status, nil
 }
 
 func (a *App) GetSteamStatus() interface{} {
-	// Check if Steamworks is initialized
-	isInit := steamworks.IsInitialized()
-	if !isInit {
+	_, signedIn := steamworks.ActiveSession()
+	if !signedIn || !steamworks.IsInitialized() {
+		errorMessage := "Steam is not signed in"
+		if signedIn {
+			errorMessage = "Steam detected; connecting"
+		}
 		return map[string]interface{}{
 			"success":          false,
 			"connected":        false,
 			"friendsConnected": false,
 			"personaState":     0,
-			"error":            "Steam not running",
+			"steamSignedIn":    signedIn,
+			"isAdmin":          false,
+			"error":            errorMessage,
 		}
 	}
 
@@ -562,6 +639,7 @@ func (a *App) GetSteamStatus() interface{} {
 	if finalName == "" {
 		finalName = "Survivor" // Default until fetched
 	}
+	steamID := steamworks.GetSteamID()
 
 	return map[string]interface{}{
 		"success":          true,
@@ -569,6 +647,8 @@ func (a *App) GetSteamStatus() interface{} {
 		"friendsConnected": personaState != 0,
 		"personaState":     personaState,
 		"name":             finalName,
+		"steamId":          strconv.FormatUint(steamID, 10),
+		"isAdmin":          a.isAdminSteamAccount(steamID),
 	}
 }
 
@@ -804,7 +884,7 @@ func getWorkshopPath() string {
 }
 
 func (a *App) GetActiveDownloads() interface{} {
-	if UseNativeSteamworks {
+	if UseNativeSteamworks && steamworks.IsInitialized() {
 		// Poll subscribed items for download status
 		items := steamworks.GetSubscribedItems()
 		var activeDownloads []map[string]interface{}
@@ -853,10 +933,23 @@ func (a *App) GetActiveDownloads() interface{} {
 			"meta": map[string]interface{}{"connected": true, "name": name},
 		}
 	}
-	return nil
+	return map[string]interface{}{
+		"type": "download-update",
+		"data": []map[string]interface{}{},
+		"meta": map[string]interface{}{"connected": false, "name": ""},
+	}
 }
 
 func (a *App) CheckMod(modId string, verify bool) (interface{}, error) {
+	if !UseNativeSteamworks || !steamworks.IsInitialized() {
+		return map[string]interface{}{
+			"success":  false,
+			"status":   "unavailable",
+			"progress": 0,
+			"error":    "Steamworks is not initialized",
+		}, nil
+	}
+
 	state := steamworks.GetItemState(modId)
 	status := "unknown"
 
@@ -1005,7 +1098,7 @@ func (a *App) DeleteMod(modId string) (interface{}, error) {
 
 func (a *App) GetDayZVersion() (interface{}, error) {
 	// Use PowerShell to get DayZ version
-	path := steamworks.GetAppInstallDir(221100)
+	path := steamworks.FindAppInstallDir(221100)
 	if path == "" {
 		return map[string]interface{}{"success": false, "error": "DayZ not found"}, nil
 	}
@@ -1046,9 +1139,64 @@ func (a *App) CheckTwitchStream(channel string) (interface{}, error) {
 
 // -- SYSTEM METHODS --
 
+const dayZInstallNotFoundCode = "dayz_install_not_found"
+
+func normalizeDayZInstallPath(path string) string {
+	path = strings.Trim(strings.TrimSpace(path), `"`)
+	if path == "" {
+		return ""
+	}
+
+	path = filepath.Clean(path)
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		name := strings.ToLower(filepath.Base(path))
+		if name == "dayz_be.exe" || name == "dayz_x64.exe" {
+			return filepath.Dir(path)
+		}
+	}
+
+	return path
+}
+
+func resolveDayZLaunchExecutable(path string) (string, string, error) {
+	path = normalizeDayZInstallPath(path)
+	if path == "" {
+		return "", "", errors.New("DayZ installation path is empty")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", path, fmt.Errorf("DayZ installation folder is unavailable: %w", err)
+	}
+	if !info.IsDir() {
+		return "", path, fmt.Errorf("DayZ installation path is not a folder")
+	}
+
+	for _, executable := range []string{"DayZ_BE.exe", "DayZ_x64.exe"} {
+		exePath := filepath.Join(path, executable)
+		if exeInfo, statErr := os.Stat(exePath); statErr == nil && !exeInfo.IsDir() {
+			return exePath, path, nil
+		}
+	}
+
+	return "", path, fmt.Errorf("DayZ_BE.exe or DayZ_x64.exe was not found in %s", path)
+}
+
+func launchFailure(code string, err error) map[string]interface{} {
+	message := "Unknown launch error"
+	if err != nil {
+		message = err.Error()
+	}
+	return map[string]interface{}{
+		"success": false,
+		"code":    code,
+		"error":   message,
+	}
+}
+
 // LaunchGame
-func (a *App) LaunchGame(ip string, port int, mods []string, name string, launchParams string, discordEnabled bool, serverName string) (interface{}, error) {
-	fmt.Printf("[App] LaunchGame Called: IP=%s Port=%d Mods=%d Name=%s Params=%s DLC=%t ServerName=%s\n", ip, port, len(mods), name, launchParams, discordEnabled, serverName)
+func (a *App) LaunchGame(ip string, port int, mods []string, name string, launchParams string, discordEnabled bool, serverName string, installPath string) (interface{}, error) {
+	fmt.Printf("[App] LaunchGame Called: IP=%s Port=%d Mods=%d Name=%s Params=%s DLC=%t ServerName=%s InstallPath=%s\n", ip, port, len(mods), name, launchParams, discordEnabled, serverName, installPath)
 
 	// Update Discord Status
 	go func() {
@@ -1097,23 +1245,12 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 	}
 
 	// 1. Resolve Mods (while sidecar is running)
-	var modStr, gamePath string
+	var modStr string
+	gamePath := normalizeDayZInstallPath(installPath)
 
 	if UseNativeSteamworks {
-		gamePath = steamworks.GetAppInstallDir(221100)
-		// Fallback paths
 		if gamePath == "" {
-			common := []string{
-				`C:\Program Files (x86)\Steam\steamapps\common\DayZ`,
-				`C:\Program Files\Steam\steamapps\common\DayZ`,
-				`D:\SteamLibrary\steamapps\common\DayZ`,
-			}
-			for _, p := range common {
-				if _, err := os.Stat(p); err == nil {
-					gamePath = p
-					break
-				}
-			}
+			gamePath = steamworks.FindAppInstallDir(221100)
 		}
 
 		if len(mods) > 0 {
@@ -1139,150 +1276,132 @@ func (a *App) LaunchGame(ip string, port int, mods []string, name string, launch
 	fmt.Printf("[App] Resolved Mods: %s | Game Path: %s\n", modStr, gamePath)
 
 	// 3. Launch Logic
-	if gamePath != "" {
-		// DIRECT LAUNCH (Requested by User)
-		exePath := filepath.Join(gamePath, "DayZ_BE.exe")
-		if _, err := os.Stat(exePath); os.IsNotExist(err) {
-			// Fallback to x64 if BE missing (unlikely but safe)
-			exePath = filepath.Join(gamePath, "DayZ_x64.exe")
+	exePath, gamePath, err := resolveDayZLaunchExecutable(gamePath)
+	if err != nil {
+		fmt.Printf("[App] DayZ installation not found: %v\n", err)
+		return launchFailure(dayZInstallNotFoundCode, err), nil
+	}
+
+	fmt.Printf("[App] Launching EXE: %s\n", exePath)
+
+	var args []string
+
+	if strings.HasPrefix(launchParams, "__FULL__ ") {
+		fullStr := strings.TrimPrefix(launchParams, "__FULL__ ")
+
+		// We must parse the full string handling quotes.
+		// A simple CSV parser with space as delimiter handles quoted command line arguments perfectly.
+		r := csv.NewReader(strings.NewReader(fullStr))
+		r.Comma = ' '
+		r.LazyQuotes = true
+		parsedArgs, err := r.Read()
+
+		if err == nil && len(parsedArgs) > 0 {
+			// Remove empty strings that might result from multiple spaces
+			for _, p := range parsedArgs {
+				if strings.TrimSpace(p) != "" {
+					args = append(args, p)
+				}
+			}
+		} else {
+			// Fallback to simple split if parsing fails
+			args = regexp.MustCompile(`\s+`).Split(fullStr, -1)
 		}
 
-		fmt.Printf("[App] Launching EXE: %s\n", exePath)
+		// Since the UI passes mod IDs instead of absolute paths (e.g. -mod=123;456),
+		// we need to replace the mod argument with the resolved absolute paths from `modStr`.
+		if modStr != "" {
+			unquote := regexp.MustCompile(`^"(.*)"$`)
+			cleanMod := unquote.ReplaceAllString(modStr, "$1")
 
-		var args []string
-
-		if strings.HasPrefix(launchParams, "__FULL__ ") {
-			fullStr := strings.TrimPrefix(launchParams, "__FULL__ ")
-
-			// We must parse the full string handling quotes.
-			// A simple CSV parser with space as delimiter handles quoted command line arguments perfectly.
-			r := csv.NewReader(strings.NewReader(fullStr))
-			r.Comma = ' '
-			r.LazyQuotes = true
-			parsedArgs, err := r.Read()
-
-			if err == nil && len(parsedArgs) > 0 {
-				// Remove empty strings that might result from multiple spaces
-				for _, p := range parsedArgs {
-					if strings.TrimSpace(p) != "" {
-						args = append(args, p)
-					}
-				}
-			} else {
-				// Fallback to simple split if parsing fails
-				args = regexp.MustCompile(`\s+`).Split(fullStr, -1)
-			}
-
-			// Since the UI passes mod IDs instead of absolute paths (e.g. -mod=123;456),
-			// we need to replace the mod argument with the resolved absolute paths from `modStr`.
-			if modStr != "" {
-				unquote := regexp.MustCompile(`^"(.*)"$`)
-				cleanMod := unquote.ReplaceAllString(modStr, "$1")
-
-				// Find and replace the placeholder mod string with the real one
-				replaced := false
-				for i, arg := range args {
-					if strings.HasPrefix(arg, "-mod=") {
-						args[i] = cleanMod
-						replaced = true
-						break
-					}
-				}
-				// If the user deleted it, we append it back to ensure they can connect
-				if !replaced {
-					args = append(args, cleanMod)
+			// Find and replace the placeholder mod string with the real one
+			replaced := false
+			for i, arg := range args {
+				if strings.HasPrefix(arg, "-mod=") {
+					args[i] = cleanMod
+					replaced = true
+					break
 				}
 			}
-
-		} else {
-			// Construct Default Args
-			args = []string{
-				fmt.Sprintf("-connect=%s", ip),
-				fmt.Sprintf("-port=%d", port),
-				"-noSplash",
-				"-noPause",
-				"-skipIntro",
-				"-world=empty",
-				"-noBenchmark",
-			}
-
-			if name != "" {
-				args = append(args, fmt.Sprintf("-name=%s", name))
-			}
-
-			if modStr != "" {
-				unquote := regexp.MustCompile(`^"(.*)"$`)
-				cleanMod := unquote.ReplaceAllString(modStr, "$1")
+			// If the user deleted it, we append it back to ensure they can connect
+			if !replaced {
 				args = append(args, cleanMod)
 			}
-
-			// Append Custom Launch Parameters (User Defined)
-			if launchParams != "" {
-				// Helper to check for existence
-				contains := func(slice []string, item string) bool {
-					for _, s := range slice {
-						if s == item {
-							return true
-						}
-					}
-					return false
-				}
-
-				// Split by space to handle multiple params
-				params := regexp.MustCompile(`\s+`).Split(launchParams, -1)
-				for _, p := range params {
-					if p != "" {
-						// Deduplicate: Don't add if already in args
-						if !contains(args, p) {
-							args = append(args, p)
-						} else {
-							fmt.Printf("[App] Skipping duplicate param: %s\n", p)
-						}
-					}
-				}
-				fmt.Printf("[App] Custom Params Processed. Final Args: %v\n", args)
-			}
-		} // Close the else block
-
-		cmd := exec.Command(exePath, args...)
-		cmd.Dir = gamePath // Important for BattlEye
-
-		fmt.Printf("[App] Exec Arguments: %v\n", args)
-
-		if err := cmd.Start(); err != nil {
-			fmt.Printf("[App] Failed to launch EXE: %v\n", err)
-			return nil, err
 		}
-
-		// Monitor Game Process
-		go func() {
-			if err := cmd.Wait(); err != nil {
-				fmt.Printf("[App] Game process exited with error: %v\n", err)
-			} else {
-				fmt.Println("[App] Game process exited normally.")
-			}
-			// Reset Discord Presence
-			discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
-		}()
 
 	} else {
-		// FALLBACK TO STEAM PROTOCOL (Old Method)
-		fmt.Println("[App] Game path not found, falling back to Steam Protocol...")
+		// Construct Default Args
+		args = []string{
+			fmt.Sprintf("-connect=%s", ip),
+			fmt.Sprintf("-port=%d", port),
+			"-noSplash",
+			"-noPause",
+			"-skipIntro",
+			"-world=empty",
+			"-noBenchmark",
+		}
 
-		nameArg := ""
 		if name != "" {
-			nameArg = fmt.Sprintf(" \"-name=%s\"", name)
+			args = append(args, fmt.Sprintf("-name=%s", name))
 		}
 
-		launchUrl := fmt.Sprintf("steam://run/221100//-connect=%s -port=%d%s -noSplash -noPause -skipIntro -world=empty -noBenchmark %s", ip, port, nameArg, modStr)
-		fmt.Printf("[App] Launching URL: %s\n", launchUrl)
-
-		cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", launchUrl)
-		if err := cmd.Start(); err != nil {
-			fmt.Printf("[App] Failed to launch steam protocol: %v\n", err)
-			return nil, err
+		if modStr != "" {
+			unquote := regexp.MustCompile(`^"(.*)"$`)
+			cleanMod := unquote.ReplaceAllString(modStr, "$1")
+			args = append(args, cleanMod)
 		}
+
+		// Append Custom Launch Parameters (User Defined)
+		if launchParams != "" {
+			// Helper to check for existence
+			contains := func(slice []string, item string) bool {
+				for _, s := range slice {
+					if s == item {
+						return true
+					}
+				}
+				return false
+			}
+
+			// Split by space to handle multiple params
+			params := regexp.MustCompile(`\s+`).Split(launchParams, -1)
+			for _, p := range params {
+				if p != "" {
+					// Deduplicate: Don't add if already in args
+					if !contains(args, p) {
+						args = append(args, p)
+					} else {
+						fmt.Printf("[App] Skipping duplicate param: %s\n", p)
+					}
+				}
+			}
+			fmt.Printf("[App] Custom Params Processed. Final Args: %v\n", args)
+		}
+	} // Close the else block
+
+	cmd := exec.Command(exePath, args...)
+	cmd.Dir = gamePath // Important for BattlEye
+
+	fmt.Printf("[App] Exec Arguments: %v\n", args)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("[App] Failed to launch EXE: %v\n", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return launchFailure(dayZInstallNotFoundCode, err), nil
+		}
+		return launchFailure("launch_failed", err), nil
 	}
+
+	// Monitor Game Process
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			fmt.Printf("[App] Game process exited with error: %v\n", err)
+		} else {
+			fmt.Println("[App] Game process exited normally.")
+		}
+		// Reset Discord Presence
+		discord.UpdatePresence("Browsing Servers", "In Launcher", "logo", "DayZ Launcher")
+	}()
 
 	return map[string]interface{}{"success": true}, nil
 }
