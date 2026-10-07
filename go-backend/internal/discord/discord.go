@@ -88,7 +88,7 @@ func sendActivity() error {
 		Buttons: []*client.Button{
 			{
 				Label: "Get Han Launcher",
-				Url:   "https://github.com/harrychafercook-sys/han-launcher",
+				Url:   "https://dayz-quiz.com/han-launcher/",
 			},
 		},
 	})
