@@ -243,5 +243,12 @@
         "url": "",
         "modName": "Nymap",
         "discord": ""
-    }
+    },
+{
+  "key": "nasdara",
+  "name": "Nasdara",
+  "url": "https://www.izurvive.com/nasdaraSat/#c=-44;-36;4",
+  "modName": "",
+  "discord": ""
+}
 ]
